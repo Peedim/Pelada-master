@@ -9,9 +9,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "react-dom": "^19.2.1",
-    "react": "^19.2.1",
+    "@supabase/supabase-js": "^2.87.0",
     "lucide-react": "^0.555.0",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
     "react-hook-form": "^7.68.0",
     "xlsx": "^0.18.5"
   },

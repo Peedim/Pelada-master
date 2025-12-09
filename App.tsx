@@ -9,23 +9,21 @@ import MatchHistory from './components/MatchHistory';
 import DataExport from './components/DataExport';
 import FooterNav from './components/FooterNav';
 import Home from './components/Home';
+import Login from './components/Login'; // <--- IMPORTANTE
 import { Player, PlayerFormData, Match, MatchStatus } from './types';
 import { playerService } from './services/playerService';
 import { matchService } from './services/matchService';
-import { LayoutDashboard, Shuffle, FolderOpen, History, Bell } from 'lucide-react';
+import { supabase } from './services/supabaseClient'; // <--- IMPORTANTE
+import { LayoutDashboard, Shuffle, FolderOpen, History, Bell, LogOut } from 'lucide-react'; // Adicionei LogOut
 
-// Admin Sub-Views
+// Admin Sub-Views e Main Tab (mantidos iguais)
 type AdminView = 'dashboard' | 'create' | 'edit' | 'sorter' | 'drafts' | 'draft-editor' | 'active-match' | 'history';
-
-// Main Tab State
 type MainTab = 'home' | 'admin';
 
 const App: React.FC = () => {
-  // Navigation State
   const [mainTab, setMainTab] = useState<MainTab>('home');
   const [adminView, setAdminView] = useState<AdminView>('dashboard');
   
-  // Data State
   const [players, setPlayers] = useState<Player[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [selectedPlayer, setSelectedPlayer] = useState<Player | undefined>(undefined);
@@ -34,35 +32,58 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   
-  // Track previous view for back navigation
   const [previousAdminView, setPreviousAdminView] = useState<AdminView>('drafts');
 
-  // --- CORREÇÃO DE ESTATÍSTICAS E OVR (Seta) ---
-  // Logged User State: Guardamos apenas o ID para manter a reatividade.
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
+  // --- NOVA LÓGICA DE AUTH ---
+  const [session, setSession] = useState<any>(null); // Sessão do Supabase
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null); // ID do Player vinculado
 
-  // Derived State: O currentUser é recalculado sempre que 'players' mudar.
-  // Isso garante que a seta de forma atualize assim que o evento for finalizado.
-  const currentUser = useMemo(() => {
-    if (!currentUserId) return null;
-    return players.find(p => p.id === currentUserId) || null;
-  }, [players, currentUserId]);
-
+  // 1. Monitorar a sessão do Supabase
   useEffect(() => {
-    loadInitialData();
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      setSession(session);
+    });
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      setSession(session);
+    });
+
+    return () => subscription.unsubscribe();
   }, []);
+
+  // 2. Carregar dados QUANDO houver sessão
+  useEffect(() => {
+    if (session) {
+      loadInitialData();
+    } else {
+      setLoading(false); // Para mostrar a tela de login
+    }
+  }, [session]);
 
   const loadInitialData = async () => {
     try {
       setLoading(true);
-      await refreshData();
       
-      // Simulação de Login: Tenta encontrar admin ou "Marquinhos"
-      // Precisa ser feito DEPOIS de carregar os players
-      const allPlayers = await playerService.getAll();
-      const adminUser = allPlayers.find(p => p.name.includes('Marquinhos')) || allPlayers.find(p => p.is_admin);
-      if (adminUser) {
-          setCurrentUserId(adminUser.id);
+      const [allPlayers, allMatches] = await Promise.all([
+        playerService.getAll(),
+        matchService.getAll()
+      ]);
+      
+      setPlayers(allPlayers);
+      setMatches(allMatches);
+
+      // VINCULAR AUTH -> PLAYER
+      // Pegamos o email do login e procuramos na tabela players
+      if (session?.user?.email) {
+        const userEmail = session.user.email.toLowerCase();
+        const foundPlayer = allPlayers.find(p => p.email.toLowerCase() === userEmail);
+        
+        if (foundPlayer) {
+          setCurrentUserId(foundPlayer.id);
+        } else {
+          // Opcional: Se logou mas não tem player, pode avisar ou criar um rascunho
+          console.warn("Usuário logado, mas nenhum jogador encontrado com este email.");
+        }
       }
 
     } catch (error) {
@@ -73,6 +94,7 @@ const App: React.FC = () => {
   };
 
   const refreshData = async () => {
+    // Mesma lógica de refresh
     try {
       const [allPlayers, allMatches] = await Promise.all([
         playerService.getAll(),
@@ -85,16 +107,59 @@ const App: React.FC = () => {
     }
   };
 
-  const handleAddPlayerClick = () => {
-    setSelectedPlayer(undefined);
-    setAdminView('create');
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    setSession(null);
+    setCurrentUserId(null);
+    setMainTab('home');
   };
 
-  const handleEditPlayerClick = (player: Player) => {
-    setSelectedPlayer(player);
-    setAdminView('edit');
-  };
+  // --- RENDERIZAÇÃO CONDICIONAL ---
 
+  // Se não estiver logado, mostra Login
+  if (!session) {
+    return <Login onLoginSuccess={() => {}} />;
+  }
+
+  // Se estiver carregando dados após login
+  if (loading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen bg-slate-900 space-y-4">
+        <div className="w-10 h-10 border-4 border-green-500 border-t-transparent rounded-full animate-spin"></div>
+        <p className="text-slate-400 animate-pulse">Carregando perfil...</p>
+      </div>
+    );
+  }
+
+  // Se logou, mas o email não bate com nenhum jogador na tabela
+  if (!currentUserId && session) {
+    return (
+      <div className="flex flex-col items-center justify-center h-screen bg-slate-900 p-6 text-center">
+        <div className="bg-slate-800 p-8 rounded-xl border border-slate-700 max-w-md">
+          <h2 className="text-xl font-bold text-white mb-2">Perfil não encontrado</h2>
+          <p className="text-slate-400 mb-6">
+            Você está logado como <span className="text-green-400">{session.user.email}</span>, 
+            mas não existe um jogador cadastrado com este e-mail no sistema.
+          </p>
+          <div className="flex flex-col gap-3">
+             <button onClick={handleLogout} className="bg-slate-700 hover:bg-slate-600 text-white py-2 px-4 rounded-lg">
+                Sair / Trocar Conta
+             </button>
+             <p className="text-xs text-slate-500 mt-2">Peça para o administrador cadastrar este e-mail.</p>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // --- RESTO DO APP (Se passou por tudo acima) ---
+  
+  const currentUser = players.find(p => p.id === currentUserId) || null;
+  const isAdmin = currentUser?.is_admin || false;
+
+  // Funções de handler (mantidas iguais, omiti para brevidade, mantenha as suas originais)
+  const handleAddPlayerClick = () => { setSelectedPlayer(undefined); setAdminView('create'); };
+  const handleEditPlayerClick = (player: Player) => { setSelectedPlayer(player); setAdminView('edit'); };
   const handleFormSubmit = async (data: PlayerFormData) => {
     setActionLoading(true);
     try {
@@ -105,77 +170,27 @@ const App: React.FC = () => {
       }
       await refreshData();
       setAdminView('dashboard');
-    } catch (error) {
-      console.error("Error saving player", error);
-      alert("Erro ao salvar jogador.");
-    } finally {
-      setActionLoading(false);
-    }
+    } catch (error) { console.error(error); alert("Erro ao salvar."); } finally { setActionLoading(false); }
   };
-
-  const handleCancel = () => {
-    setAdminView('dashboard');
-    setSelectedPlayer(undefined);
-  };
-
-  const handleDraftSaved = () => {
-    refreshData();
-    setAdminView('drafts');
-  };
-
-  // Navegação Inteligente de Eventos
+  const handleCancel = () => { setAdminView('dashboard'); setSelectedPlayer(undefined); };
+  const handleDraftSaved = () => { refreshData(); setAdminView('drafts'); };
   const handleSelectMatch = (match: Match) => {
-    if (match.status === MatchStatus.DRAFT) {
-      setSelectedDraftId(match.id);
-      setAdminView('draft-editor');
-    } else {
-      setActiveMatchId(match.id);
-      setPreviousAdminView('drafts');
-      setAdminView('active-match');
-    }
+    if (match.status === MatchStatus.DRAFT) { setSelectedDraftId(match.id); setAdminView('draft-editor'); } 
+    else { setActiveMatchId(match.id); setPreviousAdminView('drafts'); setAdminView('active-match'); }
   };
-
-  const handleSelectHistoryMatch = (matchId: string) => {
-    setActiveMatchId(matchId);
-    setPreviousAdminView('history');
-    setAdminView('active-match');
-  };
-
+  const handleSelectHistoryMatch = (matchId: string) => { setActiveMatchId(matchId); setPreviousAdminView('history'); setAdminView('active-match'); };
   const handlePublishMatch = async (matchId: string) => {
     setActionLoading(true);
-    try {
-      const match = await matchService.getById(matchId);
-      if (!match) throw new Error("Rascunho não encontrado.");
-
-      await matchService.publishMatch(matchId);
-      await refreshData(); 
-      
-      setActiveMatchId(matchId);
-      setPreviousAdminView('drafts');
-      setAdminView('active-match'); 
-    } catch (error: any) {
-      alert(`Falha ao criar evento: ${error.message}`);
-    } finally {
-      setActionLoading(false);
-    }
+    try { await matchService.publishMatch(matchId); await refreshData(); setActiveMatchId(matchId); setPreviousAdminView('drafts'); setAdminView('active-match'); } 
+    catch (error: any) { alert(error.message); } finally { setActionLoading(false); }
   };
-
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center h-screen bg-slate-900 space-y-4">
-        <div className="w-10 h-10 border-4 border-green-500 border-t-transparent rounded-full animate-spin"></div>
-        <p className="text-slate-400 animate-pulse">Carregando Pelada Manager...</p>
-      </div>
-    );
-  }
-
-  const isAdmin = currentUser?.is_admin || false;
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 font-sans selection:bg-green-500 selection:text-white">
-      {/* --- HEADER --- */}
+      {/* HEADER */}
       <div className="border-b border-slate-800 bg-slate-900/90 sticky top-0 z-40 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
+          {/* Logo / Title */}
           {mainTab === 'home' ? (
              <div className="flex items-center gap-4">
                 <div className="grid grid-cols-2 gap-1">
@@ -191,9 +206,12 @@ const App: React.FC = () => {
                 <span className="font-bold text-xl tracking-tight text-white hidden sm:block">Pelada Manager</span>
              </div>
           )}
-          <div className="absolute left-1/2 transform -translate-x-1/2 font-bold text-white uppercase tracking-wider">
+          
+          <div className="absolute left-1/2 transform -translate-x-1/2 font-bold text-white uppercase tracking-wider hidden xs:block">
              {mainTab === 'home' ? 'PELADA MANAGER' : ''}
           </div>
+
+          {/* Right Actions */}
           <div className="flex items-center gap-2">
             {mainTab === 'admin' && (
               <nav className="flex space-x-1 bg-slate-800/50 p-1 rounded-lg border border-slate-700/50 overflow-x-auto mr-2 custom-scrollbar">
@@ -204,27 +222,25 @@ const App: React.FC = () => {
               </nav>
             )}
             {mainTab === 'admin' && <DataExport />}
-            {mainTab === 'home' && (
-               <button className="relative p-2 text-slate-400 hover:text-white">
-                  <Bell size={24} />
-                  <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full"></span>
-               </button>
-            )}
+            
+            {/* Logout Button */}
+            <button 
+              onClick={handleLogout}
+              className="p-2 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-full transition-colors"
+              title="Sair"
+            >
+              <LogOut size={20} />
+            </button>
           </div>
         </div>
       </div>
 
-      {/* --- MAIN CONTENT --- */}
+      {/* MAIN CONTENT */}
       <main className="max-w-7xl mx-auto py-4">
         {mainTab === 'home' && currentUser && (
           <Home player={currentUser} matches={matches} />
         )}
-        {mainTab === 'home' && !currentUser && (
-          <div className="flex flex-col items-center justify-center pt-20 text-slate-500">
-             <p>Usuário não identificado.</p>
-             <p className="text-xs">Certifique-se que o banco de dados foi populado (Marquinhos).</p>
-          </div>
-        )}
+        
         {mainTab === 'admin' && (
           <div className="px-4 sm:px-6 lg:px-8 pb-20">
             {adminView === 'dashboard' && <PlayerDashboard players={players} onAddPlayer={handleAddPlayerClick} onEditPlayer={handleEditPlayerClick} />}
@@ -237,6 +253,7 @@ const App: React.FC = () => {
           </div>
         )}
       </main>
+      
       <FooterNav currentTab={mainTab} onTabChange={(tab) => setMainTab(tab as MainTab)} isAdmin={isAdmin} />
     </div>
   );
