@@ -422,75 +422,112 @@ export const matchService = {
       return match!;
   },
 
+  // ... (código anterior do matchService.ts) ...
+
   finishMatch: async (matchId: string): Promise<void> => {
     // 1. Marca como finalizado
     await supabase.from('matches').update({ status: MatchStatus.FINISHED }).eq('id', matchId);
 
-    // 2. Calcula Performance (Lógica original mantida, agora usando dados frescos)
     const match = await matchService.getById(matchId);
     if (!match) return;
 
+    // 2. Calcula Classificação para Bônus de Título
     const standings = matchService.calculateStandings(match);
-    const deltaUpdates: Record<string, number> = {};
-    const rankBonuses = [1.0, 0.5, 0.0, -0.5];
+    const championId = standings[0]?.teamId;
+    // Em triangular (3 times) ou quadrangular (4 times), pega o último
+    const lastPlaceId = standings[standings.length - 1]?.teamId;
 
-    // Bônus de Posição
-    standings.forEach((standing, index) => {
-      const bonus = rankBonuses[index] !== undefined ? rankBonuses[index] : -0.5;
-      const team = match.teams.find(t => t.id === standing.teamId);
-      if (team) {
+    // 3. Coleta Estatísticas
+    const allGoals = match.goals || [];
+    const playerStats: Record<string, { matches: number, wins: number, losses: number, goals: number, assists: number, cleanSheets: number, goalsConceded: number }> = {};
+
+    match.teams.forEach(team => {
         team.players.forEach(p => {
-          deltaUpdates[p.id] = (deltaUpdates[p.id] || 0) + bonus;
+            playerStats[p.id] = { matches: 0, wins: 0, losses: 0, goals: 0, assists: 0, cleanSheets: 0, goalsConceded: 0 };
         });
-      }
+
+        const teamGames = match.games.filter(g => g.status === GameStatus.FINISHED && (g.homeTeamId === team.id || g.awayTeamId === team.id));
+        
+        teamGames.forEach(game => {
+            const isHome = game.homeTeamId === team.id;
+            const myScore = isHome ? game.homeScore : game.awayScore;
+            const oppScore = isHome ? game.awayScore : game.homeScore;
+            
+            let isWin = myScore > oppScore;
+            let isLoss = oppScore > myScore;
+            if (myScore === oppScore && game.penaltyShootout) {
+                 const p = game.penaltyShootout;
+                 const myPen = isHome ? p.homeScore : p.awayScore;
+                 const oppPen = isHome ? p.awayScore : p.homeScore;
+                 if (myPen > oppPen) isWin = true; else isLoss = true;
+            }
+
+            team.players.forEach(p => {
+                const stats = playerStats[p.id];
+                stats.matches++;
+                if (isWin) stats.wins++;
+                if (isLoss) stats.losses++;
+                if (oppScore === 0) stats.cleanSheets++;
+                stats.goalsConceded += oppScore;
+            });
+        });
     });
 
-    // Bônus Individuais (Gols, Clean Sheets)
-    const allGoals = match.goals || [];
+    allGoals.forEach(g => {
+        if (g.scorerId && playerStats[g.scorerId]) playerStats[g.scorerId].goals++;
+        if (g.assistId && playerStats[g.assistId]) playerStats[g.assistId].assists++;
+    });
+
+    // 4. Aplica Tabela de AP nos Acumuladores
     for (const team of match.teams) {
-      const teamGames = match.games.filter(g => 
-        g.status === GameStatus.FINISHED && 
-        (g.homeTeamId === team.id || g.awayTeamId === team.id)
-      );
+        for (const player of team.players) {
+            const s = playerStats[player.id];
+            if (!s) continue;
 
-      for (const player of team.players) {
-        const goals = allGoals.filter(g => g.scorerId === player.id).length;
-        const assists = allGoals.filter(g => g.assistId === player.id).length;
-        
-        let cleanSheets = 0;
-        let goalsConceded = 0;
+            const { data: currentData } = await supabase
+                .from('players')
+                .select('pace_acc, shooting_acc, passing_acc, defending_acc')
+                .eq('id', player.id)
+                .single();
+            
+            if (!currentData) continue;
 
-        teamGames.forEach(g => {
-           let opponentScore = 0;
-           if (g.homeTeamId === team.id) opponentScore = g.awayScore;
-           else opponentScore = g.homeScore;
+            let dPace = 0, dShoot = 0, dPass = 0, dDef = 0;
 
-           goalsConceded += opponentScore;
-           if (opponentScore === 0) cleanSheets++;
-        });
+            // RITMO
+            dPace += (s.matches * 0.2);
+            dPace += (s.wins * 0.3);
+            dPace += (s.losses * -0.2);
+            if (team.id === championId) dPace += 1.0; // Bônus Campeão
+            if (team.id === lastPlaceId) dPace -= 0.5; // Punição Último
 
-        let individualPoints = 0;
-        switch (player.position) {
-          case PlayerPosition.ATACANTE:
-            individualPoints = (goals * 0.3) + (assists * 0.2);
-            break;
-          case PlayerPosition.MEIO_CAMPO:
-            individualPoints = (goals * 0.2) + (assists * 0.3);
-            break;
-          case PlayerPosition.DEFENSOR:
-            individualPoints = (cleanSheets * 0.4) + (goals * 0.3) + (assists * 0.2) - (goalsConceded * 0.1);
-            break;
-          case PlayerPosition.GOLEIRO:
-            individualPoints = (cleanSheets * 1.0) - (goalsConceded * 0.1);
-            break;
+            // FINALIZAÇÃO
+            dShoot += (s.goals * 0.5);
+            // Punição atacante em branco
+            if (player.position === PlayerPosition.ATACANTE && s.goals === 0 && s.matches > 0) {
+                dShoot -= 0.3;
+            }
+
+            // PASSE
+            dPass += (s.assists * 0.5);
+
+            // DEFESA
+            dDef += (s.cleanSheets * 1.0);
+            if (player.position === PlayerPosition.GOLEIRO) {
+                dDef += (s.goalsConceded * -0.3);
+            } else if (player.position === PlayerPosition.DEFENSOR) {
+                dDef += (s.goalsConceded * -0.1);
+            }
+
+            await supabase.from('players').update({
+                pace_acc: Number(currentData.pace_acc) + dPace,
+                shooting_acc: Number(currentData.shooting_acc) + dShoot,
+                passing_acc: Number(currentData.passing_acc) + dPass,
+                defending_acc: Number(currentData.defending_acc) + dDef,
+            }).eq('id', player.id);
         }
-        deltaUpdates[player.id] = (deltaUpdates[player.id] || 0) + individualPoints;
-      }
     }
-    await playerService.updatePlayerDeltas(deltaUpdates);
   },
-
-  // Mantém a lógica de cálculo em memória (não precisa de DB para isso)
   calculateStandings: (match: Match): Standing[] => {
     const standings: Record<string, Standing> = {};
 

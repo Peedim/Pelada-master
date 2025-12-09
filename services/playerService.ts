@@ -1,5 +1,23 @@
 import { supabase } from './supabaseClient';
-import { Player, PlayerFormData } from '../types';
+import { Player, PlayerFormData, PlayerPosition } from '../types';
+
+// Função auxiliar para calcular OVR baseado nos pesos da posição
+export const calculateWeightedOvr = (position: string, attr: { pace: number, shooting: number, passing: number, defending: number }) => {
+  const { pace, shooting, passing, defending } = attr;
+  
+  switch (position) {
+    case PlayerPosition.GOLEIRO:
+      return (pace * 1 + shooting * 0.1 + passing * 1 + defending * 8) / 10.1;
+    case PlayerPosition.DEFENSOR:
+      return (pace * 2 + shooting * 0.5 + passing * 2.5 + defending * 5) / 10;
+    case PlayerPosition.MEIO_CAMPO:
+      return (pace * 2 + shooting * 2 + passing * 5 + defending * 1) / 10;
+    case PlayerPosition.ATACANTE:
+      return (pace * 2 + shooting * 6 + passing * 1.5 + defending * 0.5) / 10;
+    default:
+      return (pace + shooting + passing + defending) / 4;
+  }
+};
 
 export const playerService = {
   getAll: async (): Promise<Player[]> => {
@@ -15,54 +33,85 @@ export const playerService = {
     
     return data.map((p: any) => ({
       ...p,
-      // Mapeamento IMPORTANTE: Banco (play_style) -> Código (playStyle)
       playStyle: p.play_style,
-      
       attributes: {
         pace: p.pace,
         shooting: p.shooting,
         passing: p.passing,
-        dribbling: p.dribbling,
-        defending: p.defending,
-        physical: p.physical
+        defending: p.defending
+      },
+      accumulators: {
+        pace: Number(p.pace_acc || 0),
+        shooting: Number(p.shooting_acc || 0),
+        passing: Number(p.passing_acc || 0),
+        defending: Number(p.defending_acc || 0)
       }
     }));
   },
 
   create: async (formData: PlayerFormData): Promise<Player> => {
-    // Separa o playStyle do resto para renomear
-    const { pace, shooting, passing, dribbling, defending, physical, playStyle, ...rest } = formData;
+    const { pace, shooting, passing, defending, position, playStyle, name, email, shirt_number, photo_url, is_admin } = formData;
     
+    // Calcula OVR
+    const calculatedOvr = Math.round(calculateWeightedOvr(position as string, { pace, shooting, passing, defending }));
+
     const { data, error } = await supabase
       .from('players')
       .insert([{
-        ...rest,
-        play_style: playStyle, // Mapeamento: Código -> Banco
-        pace, shooting, passing, dribbling, defending, physical,
-        ovr_history: []
+        // LISTA EXPLÍCITA (Whitelist) - Nada extra passa aqui
+        name,
+        email,
+        position,
+        play_style: playStyle,
+        shirt_number: shirt_number || null,
+        photo_url: photo_url || null,
+        is_admin: !!is_admin,
+        initial_ovr: calculatedOvr,
+        pace, 
+        shooting, 
+        passing, 
+        defending,
+        // Inicia zerado
+        pace_acc: 0, shooting_acc: 0, passing_acc: 0, defending_acc: 0,
+        ovr_history: [],
+        monthly_delta: 0
       }])
       .select()
       .single();
 
     if (error) throw error;
     
-    // Retorna formatado para o frontend não quebrar
     return {
         ...data,
         playStyle: data.play_style,
-        attributes: { pace, shooting, passing, dribbling, defending, physical }
+        attributes: { pace, shooting, passing, defending },
+        accumulators: { pace: 0, shooting: 0, passing: 0, defending: 0 }
     };
   },
 
   update: async (id: string, formData: PlayerFormData): Promise<Player> => {
-    const { pace, shooting, passing, dribbling, defending, physical, playStyle, ...rest } = formData;
+    const { pace, shooting, passing, defending, position, playStyle, name, email, shirt_number, photo_url, is_admin } = formData;
+    
+    // Calcula OVR
+    const calculatedOvr = Math.round(calculateWeightedOvr(position as string, { pace, shooting, passing, defending }));
 
     const { data, error } = await supabase
       .from('players')
       .update({
-        ...rest,
-        play_style: playStyle, // Mapeamento: Código -> Banco
-        pace, shooting, passing, dribbling, defending, physical
+        // LISTA EXPLÍCITA (Whitelist)
+        name,
+        email,
+        position,
+        play_style: playStyle,
+        shirt_number: shirt_number || null,
+        photo_url: photo_url || null,
+        is_admin: !!is_admin,
+        initial_ovr: calculatedOvr,
+        pace,
+        shooting,
+        passing,
+        defending
+        // NOTA: Não incluímos accumulators, attributes, nem nada que não seja coluna do banco
       })
       .eq('id', id)
       .select()
@@ -73,16 +122,16 @@ export const playerService = {
     return {
         ...data,
         playStyle: data.play_style,
-        attributes: { pace, shooting, passing, dribbling, defending, physical }
+        attributes: { pace, shooting, passing, defending },
+        accumulators: { 
+            pace: data.pace_acc, shooting: data.shooting_acc, 
+            passing: data.passing_acc, defending: data.defending_acc 
+        }
     };
   },
 
   updatePlayerDeltas: async (deltaUpdates: Record<string, number>) => {
-      for (const [id, delta] of Object.entries(deltaUpdates)) {
-          const { data: player } = await supabase.from('players').select('monthly_delta').eq('id', id).single();
-          const current = Number(player?.monthly_delta || 0);
-          await supabase.from('players').update({ monthly_delta: current + delta }).eq('id', id);
-      }
+      // Deprecated
   },
 
   processMonthlyUpdate: async (): Promise<string> => {
@@ -90,28 +139,47 @@ export const playerService = {
       if (!players) return "Erro ao buscar jogadores";
 
       let count = 0;
+      
       for (const p of players) {
-          const delta = p.monthly_delta || 0;
-          const change = Math.trunc(delta);
+          // Lógica V3 de Virada de Mês
+          let newPace = Math.round(p.pace + (Number(p.pace_acc) / 4));
+          let newShoot = Math.round(p.shooting + (Number(p.shooting_acc) / 4));
+          let newPass = Math.round(p.passing + (Number(p.passing_acc) / 4));
+          let newDef = Math.round(p.defending + (Number(p.defending_acc) / 4));
 
-          if (change !== 0) {
-              const cappedChange = Math.max(-4, Math.min(4, change));
-              const newOvr = Math.min(99, p.initial_ovr + cappedChange);
-              
+          newPace = Math.max(1, Math.min(99, newPace));
+          newShoot = Math.max(1, Math.min(99, newShoot));
+          newPass = Math.max(1, Math.min(99, newPass));
+          newDef = Math.max(1, Math.min(99, newDef));
+
+          const rawNewOvr = calculateWeightedOvr(p.position, { pace: newPace, shooting: newShoot, passing: newPass, defending: newDef });
+          let finalOvr = Math.round(rawNewOvr);
+
+          const currentOvr = p.initial_ovr;
+          const diff = finalOvr - currentOvr;
+
+          if (diff > 2) finalOvr = currentOvr + 2;
+          if (diff < -2) finalOvr = currentOvr - 2;
+
+          if (true) { 
               const history = p.ovr_history || [];
-              history.push({ date: new Date().toISOString(), ovr: newOvr });
+              if (finalOvr !== currentOvr) {
+                  history.push({ date: new Date().toISOString(), ovr: finalOvr });
+                  count++;
+              }
 
               await supabase.from('players').update({
-                  initial_ovr: newOvr,
+                  pace: newPace,
+                  shooting: newShoot,
+                  passing: newPass,
+                  defending: newDef,
+                  initial_ovr: finalOvr,
+                  pace_acc: 0, shooting_acc: 0, passing_acc: 0, defending_acc: 0,
                   monthly_delta: 0,
                   ovr_history: history
               }).eq('id', p.id);
-              
-              count++;
-          } else {
-              await supabase.from('players').update({ monthly_delta: 0 }).eq('id', p.id);
           }
       }
-      return `Atualização concluída! ${count} jogadores alterados.`;
+      return `Virada de mês concluída! Jogadores processados.`;
   }
 };

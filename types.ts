@@ -1,4 +1,3 @@
-
 export enum PlayerPosition {
   GOLEIRO = 'Goleiro',
   DEFENSOR = 'Defensor',
@@ -7,21 +6,14 @@ export enum PlayerPosition {
 }
 
 export enum PlayStyle {
-  // Goleiros
   WALL = 'Muralha',
   SWEEPER_KEEPER = 'Goleiro Linha',
-  
-  // Defensores
   ANCHOR = 'Defensor Fixo',
-  ALL_ROUNDER = 'Coringa', // Def/Meia
-  
-  // Meias
+  ALL_ROUNDER = 'Coringa',
   PIVOT = 'Pivô',
   DRIBBLER = 'Driblador',
-  PACER = 'Pace Certeiro', // Meia/Ata
-  SUPPORT = 'Suporte', // Geral
-  
-  // Atacantes
+  PACER = 'Pace Certeiro',
+  SUPPORT = 'Suporte',
   FINISHER = 'Finalizador',
   POACHER = 'Caça-Gols'
 }
@@ -30,9 +22,14 @@ export interface PlayerAttributes {
   pace: number;
   shooting: number;
   passing: number;
-  dribbling: number;
   defending: number;
-  physical: number;
+}
+
+export interface PlayerAccumulators {
+  pace: number;
+  shooting: number;
+  passing: number;
+  defending: number;
 }
 
 export interface OvrHistoryEntry {
@@ -47,17 +44,18 @@ export interface Player {
   email: string;
   position: PlayerPosition | string;
   playStyle: PlayStyle | string;
-  shirt_number: number;
+  shirt_number?: number; // <--- ALTERADO: Agora é opcional
   initial_ovr: number;
   photo_url?: string;
   is_admin: boolean;
   attributes: PlayerAttributes;
-  monthly_delta: number; // Acumulado invisível mensal
-  ovr_history: OvrHistoryEntry[]; // Histórico de evolução
+  accumulators: PlayerAccumulators;
+  monthly_delta: number;
+  ovr_history: OvrHistoryEntry[];
 }
 
-export interface PlayerFormData extends Omit<Player, 'id' | 'created_at' | 'attributes' | 'monthly_delta' | 'ovr_history'>, PlayerAttributes {
-  // Flat structure for the form
+export interface PlayerFormData extends Omit<Player, 'id' | 'created_at' | 'attributes' | 'accumulators' | 'monthly_delta' | 'ovr_history'>, PlayerAttributes {
+  // Flat structure for form
 }
 
 export interface Team {
@@ -66,46 +64,21 @@ export interface Team {
   players: Player[];
   totalOvr: number;
   avgOvr: number;
-  styleCounts: Record<string, number>; // For debugging/analysis
+  styleCounts: Record<string, number>;
 }
 
-export enum MatchStatus {
-  DRAFT = 'DRAFT',
-  OPEN = 'OPEN',
-  FINISHED = 'FINISHED'
-}
+export enum MatchStatus { DRAFT = 'DRAFT', OPEN = 'OPEN', FINISHED = 'FINISHED' }
+export enum GameStatus { WAITING = 'WAITING', LIVE = 'LIVE', FINISHED = 'FINISHED' }
+export enum GamePhase { PHASE_1 = 'PHASE_1', PHASE_2 = 'PHASE_2', THIRD_PLACE = 'THIRD_PLACE', FINAL = 'FINAL' }
 
-export enum GameStatus {
-  WAITING = 'WAITING',
-  LIVE = 'LIVE',
-  FINISHED = 'FINISHED'
-}
-
-export enum GamePhase {
-  PHASE_1 = 'PHASE_1', // Round Robin (Points)
-  PHASE_2 = 'PHASE_2', // 1st vs 4th, 2nd vs 3rd (Points)
-  THIRD_PLACE = 'THIRD_PLACE', // 3rd vs 4th (No Points - Title)
-  FINAL = 'FINAL' // 1st vs 2nd (No Points - Title)
-}
-
-export interface PenaltyKick {
-  teamId: string;
-  isGoal: boolean;
-  kickerId?: string;
-  round: number;
-}
-
-export interface PenaltyShootout {
-  homeScore: number;
-  awayScore: number;
-  history: PenaltyKick[];
-}
+export interface PenaltyKick { teamId: string; isGoal: boolean; kickerId?: string; round: number; }
+export interface PenaltyShootout { homeScore: number; awayScore: number; history: PenaltyKick[]; }
 
 export interface Game {
   id: string;
   matchId: string;
   homeTeamId: string;
-  awayTeamId: string; // Can be 'TBD' for finals
+  awayTeamId: string;
   homeScore: number;
   awayScore: number;
   status: GameStatus;
@@ -131,8 +104,8 @@ export interface Match {
   type: 'Quadrangular' | 'Triangular';
   status: MatchStatus;
   teams: Team[];
-  games: Game[]; // List of games
-  goals: Goal[]; // Log of all goals
+  games: Game[];
+  goals: Goal[];
 }
 
 export interface Standing {
