@@ -3,26 +3,43 @@ import { Match, MatchStatus, Team, Player, Game, Goal, GameStatus, GamePhase, St
 import { generateFixtures } from '../utils/fixtureGenerator';
 import { playerService } from './playerService';
 
-// --- HELPER: Transforma os dados do Banco (Relacional) para o objeto do Frontend (Aninhado) ---
+// --- HELPER: Calcula Stats do Time (Ignorando Goleiros na Média) ---
+const calculateTeamStats = (players: Player[]) => {
+    // Filtra apenas linha para a média (para manter a consistência do sorteio)
+    const linePlayers = players.filter(p => p.position !== PlayerPosition.GOLEIRO);
+    
+    const totalOvr = players.reduce((acc, p) => acc + (p.initial_ovr || 0), 0);
+    
+    // Média considera APENAS linha
+    const avgOvr = linePlayers.length > 0 
+        ? Math.round(linePlayers.reduce((acc, p) => acc + p.initial_ovr, 0) / linePlayers.length) 
+        : 0;
+
+    const styleCounts: Record<string, number> = {};
+    players.forEach(p => {
+        const style = p.playStyle || 'Unknown';
+        styleCounts[style] = (styleCounts[style] || 0) + 1;
+    });
+
+    return { totalOvr, avgOvr, styleCounts };
+};
+
+// --- HELPER: Transforma dados do Banco ---
 const mapDatabaseToMatch = (dbMatch: any): Match => {
   const teams: Team[] = dbMatch.match_teams.map((t: any) => {
-    // Mapeia jogadores do time
     const players: Player[] = t.team_players.map((tp: any) => ({
       ...tp.player,
-      attributes: { // Garante que atributos existam
-        pace: tp.player.pace, shooting: tp.player.shooting, passing: tp.player.passing,
-        dribbling: tp.player.dribbling, defending: tp.player.defending, physical: tp.player.physical
+      playStyle: tp.player.play_style, // Garante mapeamento
+      attributes: {
+        pace: tp.player.pace, shooting: tp.player.shooting, passing: tp.player.passing, defending: tp.player.defending
+      },
+      accumulators: {
+        pace: Number(tp.player.pace_acc || 0), shooting: Number(tp.player.shooting_acc || 0),
+        passing: Number(tp.player.passing_acc || 0), defending: Number(tp.player.defending_acc || 0)
       }
     }));
 
-    // Recalcula totais derivados (não salvos no banco)
-    const totalOvr = players.reduce((acc, p) => acc + (p.initial_ovr || 0), 0);
-    const avgOvr = players.length > 0 ? Math.round(totalOvr / players.length) : 0;
-    const styleCounts: Record<string, number> = {};
-    players.forEach(p => {
-      const style = p.playStyle || 'Unknown';
-      styleCounts[style] = (styleCounts[style] || 0) + 1;
-    });
+    const { totalOvr, avgOvr, styleCounts } = calculateTeamStats(players);
 
     return {
       id: t.id,
@@ -49,7 +66,7 @@ const mapDatabaseToMatch = (dbMatch: any): Match => {
       awayTeamId: g.away_team_id || 'TBD',
       homeScore: g.home_score,
       awayScore: g.away_score,
-      penaltyShootout: g.penalty_shootout // JSONB mapeia direto
+      penaltyShootout: g.penalty_shootout
     })),
     goals: dbMatch.goals.map((gl: any) => ({
       id: gl.id,
@@ -63,235 +80,127 @@ const mapDatabaseToMatch = (dbMatch: any): Match => {
 };
 
 export const matchService = {
-  // --- LEITURA ---
   getAll: async (): Promise<Match[]> => {
     const { data, error } = await supabase
       .from('matches')
-      .select(`
-        *,
-        match_teams (
-          *,
-          team_players (
-            player:players (*)
-          )
-        ),
-        games (*),
-        goals (*)
-      `)
+      .select(`*, match_teams (*, team_players (player:players (*))), games (*), goals (*)`)
       .order('date', { ascending: false });
 
-    if (error) {
-      console.error('Erro ao buscar matches:', error);
-      return [];
-    }
-    
-    // Mapeia e ordena games/goals localmente por segurança
+    if (error) { console.error('Erro:', error); return []; }
     return data.map(mapDatabaseToMatch);
   },
 
   getById: async (id: string): Promise<Match | undefined> => {
     const { data, error } = await supabase
       .from('matches')
-      .select(`
-        *,
-        match_teams (
-          *,
-          team_players (
-            player:players (*)
-          )
-        ),
-        games (*),
-        goals (*)
-      `)
+      .select(`*, match_teams (*, team_players (player:players (*))), games (*), goals (*)`)
       .eq('id', id)
       .single();
-
     if (error || !data) return undefined;
     return mapDatabaseToMatch(data);
   },
 
-  // --- CRIAÇÃO (DRAFT) ---
   createDraft: async (teams: Team[], config: { type: 'Quadrangular' | 'Triangular', date: string, location: string }): Promise<Match> => {
-    // 1. Cria o Match
     const { data: matchData, error: matchError } = await supabase
       .from('matches')
-      .insert([{
-        date: config.date,
-        location: config.location,
-        type: config.type,
-        status: MatchStatus.DRAFT
-      }])
-      .select()
-      .single();
-
+      .insert([{ date: config.date, location: config.location, type: config.type, status: MatchStatus.DRAFT }])
+      .select().single();
     if (matchError) throw matchError;
 
-    // 2. Cria os Times (match_teams)
     for (const team of teams) {
       const { data: teamData, error: teamError } = await supabase
         .from('match_teams')
-        .insert([{
-          match_id: matchData.id,
-          name: team.name,
-          avg_ovr: team.avgOvr
-        }])
-        .select()
-        .single();
-      
+        .insert([{ match_id: matchData.id, name: team.name, avg_ovr: team.avgOvr }])
+        .select().single();
       if (teamError) throw teamError;
 
-      // 3. Vincula Jogadores aos Times (team_players)
       if (team.players.length > 0) {
-        const teamPlayersInsert = team.players.map(p => ({
-          team_id: teamData.id,
-          player_id: p.id
-        }));
-        
+        const teamPlayersInsert = team.players.map(p => ({ team_id: teamData.id, player_id: p.id }));
         const { error: tpError } = await supabase.from('team_players').insert(teamPlayersInsert);
         if (tpError) throw tpError;
       }
     }
-
-    // Retorna o match completo atualizado
-    const createdMatch = await matchService.getById(matchData.id);
-    if (!createdMatch) throw new Error("Erro ao recarregar match criado");
-    return createdMatch;
+    return (await matchService.getById(matchData.id))!;
   },
 
   updateMatch: async (updatedMatch: Match): Promise<void> => {
-     // OBS: Com Supabase, atualizamos peças individuais. 
-     // Essa função fica legada para atualizações genéricas de campos raiz (ex: local/data)
-     await supabase
-       .from('matches')
-       .update({ 
-         location: updatedMatch.location,
-         date: updatedMatch.date,
-         status: updatedMatch.status
-       })
-       .eq('id', updatedMatch.id);
+     await supabase.from('matches').update({ location: updatedMatch.location, date: updatedMatch.date, status: updatedMatch.status }).eq('id', updatedMatch.id);
   },
 
   deleteMatch: async (id: string): Promise<void> => {
     await supabase.from('matches').delete().eq('id', id);
   },
 
-  // --- GERENCIAMENTO DE ELENCO ---
   removePlayerFromTeam: async (matchId: string, teamId: string, playerId: string): Promise<Match> => {
-    // Precisamos achar o registro na tabela de ligação team_players
-    // Como team_id é único por time no evento, basta deletar onde team_id e player_id batem
-    await supabase
-      .from('team_players')
-      .delete()
-      .match({ team_id: teamId, player_id: playerId });
-
-    const match = await matchService.getById(matchId);
-    if (!match) throw new Error('Match not found');
-    return match;
+    await supabase.from('team_players').delete().match({ team_id: teamId, player_id: playerId });
+    return (await matchService.getById(matchId))!;
   },
 
   addPlayerToTeam: async (matchId: string, teamId: string, player: Player): Promise<Match> => {
-    await supabase
-      .from('team_players')
-      .insert([{ team_id: teamId, player_id: player.id }]);
-
-    const match = await matchService.getById(matchId);
-    if (!match) throw new Error('Match not found');
-    return match;
+    await supabase.from('team_players').insert([{ team_id: teamId, player_id: player.id }]);
+    return (await matchService.getById(matchId))!;
   },
 
-  // --- EVENTO: PUBLICAR / CANCELAR ---
   publishMatch: async (matchId: string): Promise<void> => {
     const match = await matchService.getById(matchId);
     if (!match) return;
-
-    // Gera os jogos em memória
     const generatedGames = generateFixtures(match.id, match.teams, match.type as any);
-
-    // Prepara para inserir no banco
     const gamesInsert = generatedGames.map(g => ({
       match_id: match.id,
       phase: g.phase,
       sequence: g.sequence,
-      home_team_id: match.teams.find(t => t.id === g.homeTeamId)?.id, // Mapeia IDs frontend -> IDs backend se necessário (mas aqui devem ser iguais se getById vier do banco)
+      home_team_id: match.teams.find(t => t.id === g.homeTeamId)?.id,
       away_team_id: match.teams.find(t => t.id === g.awayTeamId)?.id,
       status: GameStatus.WAITING,
       home_score: 0,
       away_score: 0
     }));
-
-    // Atualiza Status e Insere Jogos
     await supabase.from('matches').update({ status: MatchStatus.OPEN }).eq('id', matchId);
     await supabase.from('games').insert(gamesInsert);
   },
 
   revertToDraft: async (matchId: string): Promise<void> => {
-    // Status -> Draft. O Cascade no banco já limparia games/goals se deletassemos o match,
-    // mas aqui queremos manter times e deletar jogos.
     await supabase.from('matches').update({ status: MatchStatus.DRAFT }).eq('id', matchId);
-    
-    // Limpar jogos e gols associados (gols tem cascade de game_id geralmente, mas por segurança limpamos)
     await supabase.from('games').delete().eq('match_id', matchId);
     await supabase.from('goals').delete().eq('match_id', matchId);
   },
 
   ensureFixtures: async (matchId: string): Promise<Match> => {
-    // Verifica se já tem jogos
     const match = await matchService.getById(matchId);
     if (match && match.status === MatchStatus.OPEN && match.games.length === 0) {
         await matchService.publishMatch(matchId);
-        const updated = await matchService.getById(matchId);
-        return updated!;
+        return (await matchService.getById(matchId))!;
     }
     return match!;
   },
 
-  // --- JOGOS E PLACARES ---
   startGame: async (matchId: string, gameId: string): Promise<Match> => {
     await supabase.from('games').update({ status: GameStatus.LIVE }).eq('id', gameId);
-    const match = await matchService.getById(matchId);
-    return match!;
+    return (await matchService.getById(matchId))!;
   },
 
   endMatch: async (matchId: string, gameId: string): Promise<Match> => {
-    // 1. Finaliza o jogo atual
     await supabase.from('games').update({ status: GameStatus.FINISHED }).eq('id', gameId);
-
-    // 2. Lógica de Torneio (Finais) - Recarrega para ter estado atual
     let match = await matchService.getById(matchId);
     if (!match) throw new Error('Match not found');
 
     const game = match.games.find(g => g.id === gameId);
     
-    // Se for Quadrangular, verifica se precisa popular finais
     if (match.type === 'Quadrangular' && game) {
-        // ... (Mesma lógica de seeding do seu código original)
-        // A diferença é que ao decidir os times da final, fazemos UPDATE na tabela games
-        
         const phase1Games = match.games.filter(g => g.phase === GamePhase.PHASE_1);
         const isPhase1Done = phase1Games.every(g => g.status === GameStatus.FINISHED);
 
         if (isPhase1Done) {
             const phase2Games = match.games.filter(g => g.phase === GamePhase.PHASE_2);
-            // Verifica se Phase 2 precisa de seed (está TBD)
             const needsSeeding = phase2Games.some(g => g.homeTeamId === 'TBD');
 
             if (needsSeeding) {
                 const standings = matchService.calculateStandings(match);
-                // Atualiza Phase 2 (Semi/Intermediária) no banco
-                if (phase2Games[0]) {
-                     await supabase.from('games').update({ 
-                         home_team_id: standings[0].teamId, away_team_id: standings[3].teamId 
-                     }).eq('id', phase2Games[0].id);
-                }
-                if (phase2Games[1]) {
-                     await supabase.from('games').update({ 
-                         home_team_id: standings[1].teamId, away_team_id: standings[2].teamId 
-                     }).eq('id', phase2Games[1].id);
-                }
+                if (phase2Games[0]) await supabase.from('games').update({ home_team_id: standings[0].teamId, away_team_id: standings[3].teamId }).eq('id', phase2Games[0].id);
+                if (phase2Games[1]) await supabase.from('games').update({ home_team_id: standings[1].teamId, away_team_id: standings[2].teamId }).eq('id', phase2Games[1].id);
             }
         }
         
-        // Verifica Final
         const phase2Games = match.games.filter(g => g.phase === GamePhase.PHASE_2);
         const isPhase2Done = phase2Games.length > 0 && phase2Games.every(g => g.status === GameStatus.FINISHED);
         
@@ -300,289 +209,151 @@ export const matchService = {
              const thirdGame = match.games.find(g => g.phase === GamePhase.THIRD_PLACE);
              
              if (finalGame && finalGame.homeTeamId === 'TBD') {
-                 // Recalcula standings considerando fase 2 se necessário, ou lógica de vencedores
-                 // Simplificação: Assumindo vencedores da fase 2 vão pra final
-                 // Precisaria saber quem ganhou os jogos da fase 2. 
-                 // Como calculateStandings é genérico, vamos usar a lógica de "quem passou" manual aqui ou adaptar standings
-                 
-                 // Para simplificar a migração, vamos recarregar o match e deixar a UI ou próxima ação lidar, 
-                 // OU implementar seeding básico aqui se a lógica for crítica.
-                 // SEGUINDO SEU CÓDIGO ORIGINAL (Standings baseados em pontos gerais):
                  const standings = matchService.calculateStandings(match);
-                 
-                 await supabase.from('games').update({
-                     home_team_id: standings[0].teamId, away_team_id: standings[1].teamId
-                 }).eq('id', finalGame.id);
-
-                 if (thirdGame) {
-                     await supabase.from('games').update({
-                         home_team_id: standings[2].teamId, away_team_id: standings[3].teamId
-                     }).eq('id', thirdGame.id);
-                 }
+                 await supabase.from('games').update({ home_team_id: standings[0].teamId, away_team_id: standings[1].teamId }).eq('id', finalGame.id);
+                 if (thirdGame) await supabase.from('games').update({ home_team_id: standings[2].teamId, away_team_id: standings[3].teamId }).eq('id', thirdGame.id);
              }
         }
     }
-
-    // Retorna estado final atualizado
-    match = await matchService.getById(matchId);
-    return match!;
+    return (await matchService.getById(matchId))!;
   },
 
   scoreGoal: async (matchId: string, gameId: string, teamId: string, scorerId: string, assistId?: string): Promise<Match> => {
-    // 1. Insere o Gol
-    await supabase.from('goals').insert([{
-        match_id: matchId,
-        game_id: gameId,
-        team_id: teamId,
-        scorer_id: scorerId,
-        assist_id: assistId,
-        minute: new Date().getMinutes()
-    }]);
-
-    // 2. Atualiza Placar no Jogo
-    // Primeiro descobrimos se o time é home ou away
+    await supabase.from('goals').insert([{ match_id: matchId, game_id: gameId, team_id: teamId, scorer_id: scorerId, assist_id: assistId, minute: new Date().getMinutes() }]);
     const { data: game } = await supabase.from('games').select('*').eq('id', gameId).single();
     if (game) {
-        if (game.home_team_id === teamId) {
-            await supabase.from('games').update({ home_score: game.home_score + 1 }).eq('id', gameId);
-        } else {
-            await supabase.from('games').update({ away_score: game.away_score + 1 }).eq('id', gameId);
-        }
+        if (game.home_team_id === teamId) await supabase.from('games').update({ home_score: game.home_score + 1 }).eq('id', gameId);
+        else await supabase.from('games').update({ away_score: game.away_score + 1 }).eq('id', gameId);
     }
-
-    const match = await matchService.getById(matchId);
-    return match!;
+    return (await matchService.getById(matchId))!;
   },
 
   updateGoal: async (matchId: string, goalId: string, scorerId: string, assistId?: string): Promise<Match> => {
-      await supabase.from('goals').update({
-          scorer_id: scorerId,
-          assist_id: assistId
-      }).eq('id', goalId);
-      
-      const match = await matchService.getById(matchId);
-      return match!;
+      await supabase.from('goals').update({ scorer_id: scorerId, assist_id: assistId }).eq('id', goalId);
+      return (await matchService.getById(matchId))!;
   },
 
-  // --- PÊNALTIS ---
   initializePenaltyShootout: async (matchId: string, gameId: string): Promise<Match> => {
       const initialShootout: PenaltyShootout = { homeScore: 0, awayScore: 0, history: [] };
       await supabase.from('games').update({ penalty_shootout: initialShootout }).eq('id', gameId);
-      
-      const match = await matchService.getById(matchId);
-      return match!;
+      return (await matchService.getById(matchId))!;
   },
 
   registerPenalty: async (matchId: string, gameId: string, teamId: string, isGoal: boolean): Promise<Match> => {
-      // 1. Busca estado atual
       const { data: game } = await supabase.from('games').select('penalty_shootout, home_team_id').eq('id', gameId).single();
-      
       if (game && game.penalty_shootout) {
           const shootout = game.penalty_shootout as PenaltyShootout;
-          
-          // Atualiza histórico
-          shootout.history.push({
-              teamId,
-              isGoal,
-              round: shootout.history.length + 1
-          });
-
-          // Atualiza placar
+          shootout.history.push({ teamId, isGoal, round: shootout.history.length + 1 });
           if (isGoal) {
-              if (teamId === game.home_team_id) shootout.homeScore += 1;
-              else shootout.awayScore += 1;
+              if (teamId === game.home_team_id) shootout.homeScore += 1; else shootout.awayScore += 1;
           }
-
-          // Salva no banco
           await supabase.from('games').update({ penalty_shootout: shootout }).eq('id', gameId);
       }
-      
-      const match = await matchService.getById(matchId);
-      return match!;
+      return (await matchService.getById(matchId))!;
   },
 
   undoLastPenalty: async (matchId: string, gameId: string): Promise<Match> => {
       const { data: game } = await supabase.from('games').select('penalty_shootout, home_team_id').eq('id', gameId).single();
-      
       if (game && game.penalty_shootout) {
           const shootout = game.penalty_shootout as PenaltyShootout;
           const lastKick = shootout.history.pop();
-          
           if (lastKick && lastKick.isGoal) {
-              if (lastKick.teamId === game.home_team_id) {
-                  shootout.homeScore = Math.max(0, shootout.homeScore - 1);
-              } else {
-                  shootout.awayScore = Math.max(0, shootout.awayScore - 1);
-              }
+              if (lastKick.teamId === game.home_team_id) shootout.homeScore = Math.max(0, shootout.homeScore - 1);
+              else shootout.awayScore = Math.max(0, shootout.awayScore - 1);
           }
           await supabase.from('games').update({ penalty_shootout: shootout }).eq('id', gameId);
       }
-      
-      const match = await matchService.getById(matchId);
-      return match!;
+      return (await matchService.getById(matchId))!;
   },
 
-  // ... (código anterior do matchService.ts) ...
-
   finishMatch: async (matchId: string): Promise<void> => {
-    // 1. Marca como finalizado
     await supabase.from('matches').update({ status: MatchStatus.FINISHED }).eq('id', matchId);
-
     const match = await matchService.getById(matchId);
     if (!match) return;
 
-    // 2. Calcula Classificação para Bônus de Título
     const standings = matchService.calculateStandings(match);
     const championId = standings[0]?.teamId;
-    // Em triangular (3 times) ou quadrangular (4 times), pega o último
     const lastPlaceId = standings[standings.length - 1]?.teamId;
-
-    // 3. Coleta Estatísticas
     const allGoals = match.goals || [];
-    const playerStats: Record<string, { matches: number, wins: number, losses: number, goals: number, assists: number, cleanSheets: number, goalsConceded: number }> = {};
+    
+    // Stats calculation (Mantida a mesma lógica da sua V3 com tabela de AP)
+    const playerStats: Record<string, any> = {};
+    match.teams.forEach(t => t.players.forEach(p => playerStats[p.id] = { matches: 0, wins: 0, losses: 0, goals: 0, assists: 0, cleanSheets: 0, goalsConceded: 0 }));
 
     match.teams.forEach(team => {
-        team.players.forEach(p => {
-            playerStats[p.id] = { matches: 0, wins: 0, losses: 0, goals: 0, assists: 0, cleanSheets: 0, goalsConceded: 0 };
-        });
-
         const teamGames = match.games.filter(g => g.status === GameStatus.FINISHED && (g.homeTeamId === team.id || g.awayTeamId === team.id));
-        
         teamGames.forEach(game => {
             const isHome = game.homeTeamId === team.id;
             const myScore = isHome ? game.homeScore : game.awayScore;
             const oppScore = isHome ? game.awayScore : game.homeScore;
-            
             let isWin = myScore > oppScore;
             let isLoss = oppScore > myScore;
             if (myScore === oppScore && game.penaltyShootout) {
                  const p = game.penaltyShootout;
-                 const myPen = isHome ? p.homeScore : p.awayScore;
-                 const oppPen = isHome ? p.awayScore : p.homeScore;
-                 if (myPen > oppPen) isWin = true; else isLoss = true;
+                 if ((isHome ? p.homeScore : p.awayScore) > (isHome ? p.awayScore : p.homeScore)) isWin = true; else isLoss = true;
             }
-
             team.players.forEach(p => {
-                const stats = playerStats[p.id];
-                stats.matches++;
-                if (isWin) stats.wins++;
-                if (isLoss) stats.losses++;
-                if (oppScore === 0) stats.cleanSheets++;
-                stats.goalsConceded += oppScore;
+                const s = playerStats[p.id];
+                s.matches++;
+                if (isWin) s.wins++;
+                if (isLoss) s.losses++;
+                if (oppScore === 0) s.cleanSheets++;
+                s.goalsConceded += oppScore;
             });
         });
     });
-
     allGoals.forEach(g => {
         if (g.scorerId && playerStats[g.scorerId]) playerStats[g.scorerId].goals++;
         if (g.assistId && playerStats[g.assistId]) playerStats[g.assistId].assists++;
     });
 
-    // 4. Aplica Tabela de AP nos Acumuladores
     for (const team of match.teams) {
         for (const player of team.players) {
             const s = playerStats[player.id];
             if (!s) continue;
-
-            const { data: currentData } = await supabase
-                .from('players')
-                .select('pace_acc, shooting_acc, passing_acc, defending_acc')
-                .eq('id', player.id)
-                .single();
-            
-            if (!currentData) continue;
+            const { data: cur } = await supabase.from('players').select('pace_acc, shooting_acc, passing_acc, defending_acc').eq('id', player.id).single();
+            if (!cur) continue;
 
             let dPace = 0, dShoot = 0, dPass = 0, dDef = 0;
-
-            // RITMO
-            dPace += (s.matches * 0.2);
-            dPace += (s.wins * 0.3);
-            dPace += (s.losses * -0.2);
-            if (team.id === championId) dPace += 1.0; // Bônus Campeão
-            if (team.id === lastPlaceId) dPace -= 0.5; // Punição Último
-
-            // FINALIZAÇÃO
+            dPace += (s.matches * 0.2) + (s.wins * 0.3) + (s.losses * -0.2);
+            if (team.id === championId) dPace += 1.0;
+            if (team.id === lastPlaceId) dPace -= 0.5;
             dShoot += (s.goals * 0.5);
-            // Punição atacante em branco
-            if (player.position === PlayerPosition.ATACANTE && s.goals === 0 && s.matches > 0) {
-                dShoot -= 0.3;
-            }
-
-            // PASSE
+            if (player.position === PlayerPosition.ATACANTE && s.goals === 0 && s.matches > 0) dShoot -= 0.3;
             dPass += (s.assists * 0.5);
-
-            // DEFESA
             dDef += (s.cleanSheets * 1.0);
-            if (player.position === PlayerPosition.GOLEIRO) {
-                dDef += (s.goalsConceded * -0.3);
-            } else if (player.position === PlayerPosition.DEFENSOR) {
-                dDef += (s.goalsConceded * -0.1);
-            }
+            if (player.position === PlayerPosition.GOLEIRO) dDef += (s.goalsConceded * -0.3);
+            else if (player.position === PlayerPosition.DEFENSOR) dDef += (s.goalsConceded * -0.1);
 
             await supabase.from('players').update({
-                pace_acc: Number(currentData.pace_acc) + dPace,
-                shooting_acc: Number(currentData.shooting_acc) + dShoot,
-                passing_acc: Number(currentData.passing_acc) + dPass,
-                defending_acc: Number(currentData.defending_acc) + dDef,
+                pace_acc: Number(cur.pace_acc) + dPace,
+                shooting_acc: Number(cur.shooting_acc) + dShoot,
+                passing_acc: Number(cur.passing_acc) + dPass,
+                defending_acc: Number(cur.defending_acc) + dDef,
             }).eq('id', player.id);
         }
     }
   },
+
   calculateStandings: (match: Match): Standing[] => {
     const standings: Record<string, Standing> = {};
-
     match.teams.forEach(t => {
-        standings[t.id] = {
-            teamId: t.id,
-            teamName: t.name,
-            played: 0,
-            points: 0,
-            wins: 0,
-            draws: 0,
-            losses: 0,
-            goalsFor: 0,
-            goalsAgainst: 0,
-            goalDiff: 0
-        };
+        standings[t.id] = { teamId: t.id, teamName: t.name, played: 0, points: 0, wins: 0, draws: 0, losses: 0, goalsFor: 0, goalsAgainst: 0, goalDiff: 0 };
     });
-
     match.games.forEach(game => {
-        const isPointBased = game.phase === GamePhase.PHASE_1 || game.phase === GamePhase.PHASE_2;
-        
-        if (game.status === GameStatus.FINISHED && isPointBased) {
+        if (game.status === GameStatus.FINISHED && (game.phase === GamePhase.PHASE_1 || game.phase === GamePhase.PHASE_2)) {
              const home = standings[game.homeTeamId];
              const away = standings[game.awayTeamId];
-
              if (!home || !away) return; 
-
-             home.played++;
-             away.played++;
-             home.goalsFor += game.homeScore;
-             home.goalsAgainst += game.awayScore;
-             away.goalsFor += game.awayScore;
-             away.goalsAgainst += game.homeScore;
-
-             if (game.homeScore > game.awayScore) {
-                 home.points += 3;
-                 home.wins++;
-                 away.losses++;
-             } else if (game.awayScore > game.homeScore) {
-                 away.points += 3;
-                 away.wins++;
-                 home.losses++;
-             } else {
-                 home.points += 1;
-                 home.draws++;
-                 away.points += 1;
-                 away.draws++;
-             }
+             home.played++; away.played++;
+             home.goalsFor += game.homeScore; home.goalsAgainst += game.awayScore;
+             away.goalsFor += game.awayScore; away.goalsAgainst += game.homeScore;
+             if (game.homeScore > game.awayScore) { home.points += 3; home.wins++; away.losses++; }
+             else if (game.awayScore > game.homeScore) { away.points += 3; away.wins++; home.losses++; }
+             else { home.points += 1; home.draws++; away.points += 1; away.draws++; }
         }
     });
-
-    return Object.values(standings).map(s => ({
-        ...s,
-        goalDiff: s.goalsFor - s.goalsAgainst
-    })).sort((a, b) => {
+    return Object.values(standings).map(s => ({ ...s, goalDiff: s.goalsFor - s.goalsAgainst })).sort((a, b) => {
         if (b.points !== a.points) return b.points - a.points;
         if (b.wins !== a.wins) return b.wins - a.wins;
         if (b.goalDiff !== a.goalDiff) return b.goalDiff - a.goalDiff;
