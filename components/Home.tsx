@@ -189,13 +189,13 @@ const Home: React.FC<HomeProps> = ({ player, matches, onPlayerUpdate }) => {
 
           {/* Coluna da Direita (Foto) */}
           <div className="col-span-3 relative h-full flex items-end justify-center cursor-pointer group" onClick={() => setIsEditingPhoto(true)}>
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-56 h-56 bg-emerald-400/20 rounded-full blur-3xl -z-10"></div>
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-52 h-56 bg-emerald-400/20 rounded-full blur-3xl -z-10"></div>
               
               {player.photo_url ? (
                 <img 
                     src={player.photo_url} 
                     alt={player.name} 
-                    className="w-full h-full object-contain object-bottom drop-shadow-[0_15px_15px_rgba(0,0,0,0.6)] transform scale-125 translate-y-4 transition-transform group-hover:scale-130 duration-300 [mask-image:linear-gradient(to_top,transparent,black_20%)]" 
+                    className="w-full h-full object-contain object-bottom drop-shadow-[0_15px_15px_rgba(0,0,0,0.6)] transform scale-125 -translate-y-11 transition-transform group-hover:scale-130 duration-300 [mask-image:linear-gradient(to_top,transparent,black_30%)]" 
                 />
               ) : (
                 <User size={180} className="text-slate-700 mb-10 opacity-50" />
