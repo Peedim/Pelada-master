@@ -153,9 +153,9 @@ const Home: React.FC<HomeProps> = ({ player, matches, onPlayerUpdate }) => {
   const closePhotoModal = () => { setIsEditingPhoto(false); setPreviewImage(null); }
 
   return (
-    <div className="w-full max-w-lg mx-auto pb-24 animate-fade-in pt-4">
+    <div className="w-full max-w-lg mx-auto pb-24 animate-fade-in pt-8">
       {/* Top Section: FIFA Card Layout */}
-      <div className="grid grid-cols-5 px-6 relative z-10 h-[420px] items-end">
+      <div className="grid grid-cols-5 px-5 relative z-10 h-[380px] items-end">
           
           {/* AJUSTE 2: Coluna da Esquerda (Info) - Movido para o meio (items-center no eixo Y do grid) ou ajustando padding */}
           {/* Usei 'self-center' e 'pb-10' para tentar alinhar o topo do número com o topo da imagem */}
