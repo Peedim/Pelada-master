@@ -89,3 +89,11 @@ CREATE TABLE ovr_history (
     ovr_value INT NOT NULL,
     recorded_at DATE DEFAULT CURRENT_DATE
 );
+
+-- Adicionar ao final do sql/schema.sql
+CREATE TABLE player_presets (
+    id uuid DEFAULT uuid_generate_v4() PRIMARY KEY,
+    created_at timestamp with time zone DEFAULT now(),
+    name text NOT NULL,
+    player_ids text[] NOT NULL
+);

@@ -2,9 +2,22 @@ import { Player, Team, PlayerPosition } from '../types';
 
 export type TournamentType = 'Quadrangular' | 'Triangular';
 
+// Função auxiliar para embaralhar listas (Fisher-Yates Shuffle)
+const shuffleArray = <T>(array: T[]): T[] => {
+    const newArray = [...array];
+    for (let i = newArray.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [newArray[i], newArray[j]] = [newArray[j], newArray[i]];
+    }
+    return newArray;
+};
+
 export const generateTeams = (players: Player[], type: TournamentType): Team[] => {
   const numTeams = type === 'Quadrangular' ? 4 : 3;
   
+  // Definição das Cores/Nomes
+  const teamNames = ['Time Branco', 'Time Preto', 'Time Vermelho', 'Time Azul'];
+
   // 1. Separa Linha e Goleiros
   const linePlayers = players.filter(p => p.position !== PlayerPosition.GOLEIRO);
   const goalkeepers = players.filter(p => p.position === PlayerPosition.GOLEIRO);
@@ -12,69 +25,93 @@ export const generateTeams = (players: Player[], type: TournamentType): Team[] =
   // Inicializa times
   const teams: Team[] = Array.from({ length: numTeams }, (_, i) => ({
     id: `team-${i}`,
-    name: `Time ${String.fromCharCode(65 + i)}`,
+    name: teamNames[i] || `Time ${String.fromCharCode(65 + i)}`, // Usa nome da cor ou letra se faltar
     players: [],
     totalOvr: 0,
     avgOvr: 0,
     styleCounts: {} 
   }));
 
+  // Ordenação Base
   const sortByOvrDesc = (a: Player, b: Player) => b.initial_ovr - a.initial_ovr;
 
-  // 2. Lógica de Balanceamento (APENAS LINHA)
-  const potDEF = linePlayers.filter(p => p.position === PlayerPosition.DEFENSOR).sort(sortByOvrDesc);
-  const potREST = linePlayers.filter(p => p.position !== PlayerPosition.DEFENSOR).sort(sortByOvrDesc);
+  // 2. Criação dos Potes Táticos
+  const getPlayersByPos = (pos: PlayerPosition) => 
+      linePlayers.filter(p => p.position === pos).sort(sortByOvrDesc);
 
-  const addPlayerToTeam = (team: Team, player: Player) => {
-    team.players.push(player);
-    team.totalOvr += player.initial_ovr;
-    const style = player.playStyle || 'Unknown';
-    team.styleCounts[style] = (team.styleCounts[style] || 0) + 1;
+  const defs = getPlayersByPos(PlayerPosition.DEFENSOR);
+  const mids = getPlayersByPos(PlayerPosition.MEIO_CAMPO);
+  const atts = getPlayersByPos(PlayerPosition.ATACANTE);
+
+  // 3. O Motor de Distribuição com "Ruído"
+  const distributePool = (pool: Player[]) => {
+      let processingPool = [...pool];
+      while (processingPool.length > 0) {
+          const batch = processingPool.splice(0, numTeams);
+          const shuffledBatch = shuffleArray(batch);
+
+          shuffledBatch.forEach(player => {
+              let bestTeamIndex = -1;
+              let bestScore = Infinity;
+
+              teams.forEach((team, index) => {
+                  let score = team.totalOvr;
+                  const noise = (Math.random() * 10) - 5;
+                  score += noise;
+
+                  const currentStyle = player.playStyle || 'Unknown';
+                  const styleCount = team.styleCounts[currentStyle] || 0;
+                  score += (styleCount * 25);
+
+                  const samePosCount = team.players.filter(p => p.position === player.position).length;
+                  score += (samePosCount * 10);
+
+                  if (score < bestScore) {
+                      bestScore = score;
+                      bestTeamIndex = index;
+                  }
+              });
+              
+              const targetTeam = teams[bestTeamIndex];
+              targetTeam.players.push(player);
+              targetTeam.totalOvr += player.initial_ovr;
+              const style = player.playStyle || 'Unknown';
+              targetTeam.styleCounts[style] = (targetTeam.styleCounts[style] || 0) + 1;
+          });
+      }
   };
 
-  // Snake Draft para Defensores
-  potDEF.forEach((def, index) => {
-    const cycle = Math.floor(index / numTeams);
-    const teamIndex = cycle % 2 === 0 ? (index % numTeams) : (numTeams - 1 - (index % numTeams));
-    addPlayerToTeam(teams[teamIndex], def);
-  });
+  // Executa Distribuição
+  distributePool(defs);
+  distributePool(mids);
+  distributePool(atts);
 
-  // Balanceamento para Resto
-  potREST.forEach((player) => {
-    let bestTeamIndex = 0;
-    let bestScore = Infinity;
-    const minTotal = Math.min(...teams.map(t => t.totalOvr));
-
-    teams.forEach((team, index) => {
-      const styleCount = team.styleCounts[player.playStyle] || 0;
-      const penalty = (team.totalOvr - minTotal > 15 ? 1000 : 0) + (styleCount * 25);
-      const score = team.totalOvr + penalty;
-      if (score < bestScore) { bestScore = score; bestTeamIndex = index; }
-    });
-    addPlayerToTeam(teams[bestTeamIndex], player);
-  });
-
-  // 3. Distribuição Simples de Goleiros (Sequencial)
-  // Eles entram no time apenas para constar na lista, não afetam a lógica acima
+  // 4. Distribuição de Goleiros (Visual)
   goalkeepers.forEach((gk, index) => {
       if (index < numTeams) {
-          teams[index].players.unshift(gk); // Adiciona no início da lista visual
+          teams[index].players.unshift(gk);
       }
   });
 
-  // 4. Finalização
-  const positionOrder: Record<string, number> = { [PlayerPosition.GOLEIRO]: 0, [PlayerPosition.DEFENSOR]: 1, [PlayerPosition.MEIO_CAMPO]: 2, [PlayerPosition.ATACANTE]: 3 };
+  // 5. Finalização e Ordenação
+  const positionOrder: Record<string, number> = { 
+      [PlayerPosition.GOLEIRO]: 0, 
+      [PlayerPosition.DEFENSOR]: 1, 
+      [PlayerPosition.MEIO_CAMPO]: 2, 
+      [PlayerPosition.ATACANTE]: 3 
+  };
 
   teams.forEach(team => {
     team.players.sort((a, b) => {
         const posA = positionOrder[a.position] || 99;
         const posB = positionOrder[b.position] || 99;
-        return posA - posB || b.initial_ovr - a.initial_ovr;
+        return (posA - posB) || (b.initial_ovr - a.initial_ovr);
     });
 
-    // Média apenas da linha para exibição justa
     const lineOnly = team.players.filter(p => p.position !== PlayerPosition.GOLEIRO);
-    team.avgOvr = lineOnly.length > 0 ? Math.round(lineOnly.reduce((a, b) => a + b.initial_ovr, 0) / lineOnly.length) : 0;
+    team.avgOvr = lineOnly.length > 0 
+        ? Math.round(lineOnly.reduce((a, b) => a + b.initial_ovr, 0) / lineOnly.length) 
+        : 0;
   });
 
   return teams;
