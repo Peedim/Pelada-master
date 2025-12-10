@@ -194,7 +194,7 @@ const Home: React.FC<HomeProps> = ({ player, matches, onPlayerUpdate }) => {
   return (
     <div className="w-full max-w-lg mx-auto pb-24 animate-fade-in pt-8">
       {/* Top Section */}
-      <div className="grid grid-cols-5 px-6 relative z-10 h-[380px]">
+      <div className="grid grid-cols-5 px-5 relative z-10 h-[340px] ">
           <div className="col-span-2 flex flex-col items-start pt-6 z-20 pl-1">
               <div className="flex flex-col items-start w-full mb-4">
                    <div className="relative leading-none">
@@ -221,7 +221,7 @@ const Home: React.FC<HomeProps> = ({ player, matches, onPlayerUpdate }) => {
           <div className="col-span-3 relative flex items-end justify-center cursor-pointer group" onClick={() => setIsEditingPhoto(true)}>
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-48 h-48 bg-emerald-400/10 rounded-full blur-3xl -z-10"></div>
               {player.photo_url ? (
-                <img src={player.photo_url} alt={player.name} className="w-full h-full object-contain object-bottom drop-shadow-[0_15px_15px_rgba(0,0,0,0.6)] transform translate-y-2 transition-transform group-hover:scale-105 duration-300 [mask-image:linear-gradient(to_top,transparent,black_30%)]" />
+                <img src={player.photo_url} alt={player.name} className="w-full h-full object-contain object-bottom drop-shadow-[0_15px_15px_rgba(0,0,0,0.6)] transform translate-y-2 transition-transform group-hover:scale-125 duration-300 [mask-image:linear-gradient(to_top,transparent,black_30%)]" />
               ) : (
                 <User size={160} className="text-slate-700 mb-8 opacity-50" />
               )}
