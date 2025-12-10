@@ -1,7 +1,7 @@
 import React, { useMemo, useState, useRef } from 'react';
 import { Player, Match, MatchStatus, PlayerFormData } from '../types';
 import { playerService, calculateWeightedOvr } from '../services/playerService';
-import { matchService } from '../services/matchService';
+import { matchService } from '../services/matchService'; 
 import { Zap, TrendingUp, User, Camera, Upload, X, Loader2, Trash2, Check, RefreshCw, ChevronsUp, ChevronsDown, Minus, AlertTriangle } from 'lucide-react';
 
 interface HomeProps {
@@ -10,20 +10,19 @@ interface HomeProps {
   onPlayerUpdate?: () => void;
 }
 
+// AJUSTE 1: Reduzi os tamanhos das fontes do nome para ficar mais compacto
 const getNameSizeClass = (name: string) => {
     const length = name.length;
-    if (length > 16) return "text-lg leading-tight"; 
-    if (length > 9) return "text-2xl leading-none"; 
-    if (length > 6) return "text-3xl leading-[0.9]";
-    return "text-4xl leading-[0.8]"; 
+    if (length > 16) return "text-base leading-tight"; 
+    if (length > 9) return "text-xl leading-none"; 
+    if (length > 6) return "text-2xl leading-[0.9]";
+    return "text-3xl leading-[0.8]"; 
 };
 
-// --- AJUSTE NOS QUADRADOS DE STATS ---
 const StatsBox = ({ label, value, color, subtext }: { label: string, value: number, color: string, subtext?: string }) => (
   <div className="bg-slate-800 border border-slate-700/50 rounded-xl p-3 flex flex-col items-center justify-center shadow-lg aspect-square"> 
-    {/* Adicionei 'aspect-square' para forçar quadrado e 'justify-center' */}
     <span className="text-[10px] text-slate-500 font-bold uppercase mb-1">{label}</span>
-    <span className={`text-4xl font-black ${color} leading-none`}>{value}</span>
+    <span className={`text-3xl font-black ${color} leading-none`}>{value}</span>
     {subtext && <span className="text-[9px] text-slate-500 mt-1 truncate max-w-full">{subtext}</span>}
   </div>
 );
@@ -35,7 +34,6 @@ const Home: React.FC<HomeProps> = ({ player, matches, onPlayerUpdate }) => {
   const [isDeletePhotoConfirmOpen, setIsDeletePhotoConfirmOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // --- LÓGICA DA SETA (MANTIDA IGUAL) ---
   const arrowIndicator = useMemo(() => {
       const { pace, shooting, passing, defending } = player.attributes;
       let pPace = Math.round(pace + (player.accumulators.pace / 4));
@@ -111,7 +109,6 @@ const Home: React.FC<HomeProps> = ({ player, matches, onPlayerUpdate }) => {
     return { pathD, lastX, lastY, displayLabels: finalLabels };
   }, [player]);
 
-  // Image helpers (Mantido igual)
   const processImage = (file: File): Promise<string> => {
     return new Promise((resolve, reject) => {
         const reader = new FileReader(); reader.readAsDataURL(file);
@@ -143,7 +140,9 @@ const Home: React.FC<HomeProps> = ({ player, matches, onPlayerUpdate }) => {
           if (!currentPlayerData) throw new Error("Jogador não encontrado.");
           const { attributes, ...rest } = currentPlayerData;
           const updatePayload: PlayerFormData = {
-              ...rest, ...attributes, photo_url: url
+              name: rest.name, email: rest.email, position: rest.position, playStyle: rest.playStyle,
+              shirt_number: rest.shirt_number, initial_ovr: rest.initial_ovr, is_admin: rest.is_admin,
+              photo_url: url, pace: attributes.pace, shooting: attributes.shooting, passing: attributes.passing,
           };
           await playerService.update(player.id, updatePayload);
           setPreviewImage(null); setIsEditingPhoto(false); setIsDeletePhotoConfirmOpen(false); window.location.reload();
@@ -156,44 +155,47 @@ const Home: React.FC<HomeProps> = ({ player, matches, onPlayerUpdate }) => {
   return (
     <div className="w-full max-w-lg mx-auto pb-24 animate-fade-in pt-4">
       {/* Top Section: FIFA Card Layout */}
-      {/* AJUSTE NA ALTURA: h-[420px] para dar mais espaço para a foto */}
       <div className="grid grid-cols-5 px-6 relative z-10 h-[420px] items-end">
           
-          {/* Coluna da Esquerda (Info) - Mantém fixo no topo */}
-          <div className="col-span-2 flex flex-col items-start self-start pt-8 z-20 pl-1">
-              <div className="flex flex-col items-start w-full mb-4">
+          {/* AJUSTE 2: Coluna da Esquerda (Info) - Movido para o meio (items-center no eixo Y do grid) ou ajustando padding */}
+          {/* Usei 'self-center' e 'pb-10' para tentar alinhar o topo do número com o topo da imagem */}
+          <div className="col-span-2 flex flex-col items-start self-center pb-20 z-20 pl-1">
+              <div className="flex flex-col items-start w-full mb-2">
                    <div className="relative leading-none">
-                       <span className="text-[4.5rem] font-black text-white tracking-tighter drop-shadow-2xl block -ml-1">
+                       {/* AJUSTE 3: Fonte menor para o OVR */}
+                       <span className="text-[3.5rem] font-black text-white tracking-tighter drop-shadow-2xl block -ml-1">
                            {player.initial_ovr}
                        </span>
-                       <FormIcon size={32} className={`absolute top-6 -right-11 ${formColor} drop-shadow-lg animate-pulse`} strokeWidth={0} />
+                       {/* Seta ajustada para o novo tamanho */}
+                       <FormIcon size={24} className={`absolute top-4 -right-8 ${formColor} drop-shadow-lg animate-pulse`} strokeWidth={0} />
                    </div>
-                   <span className="text-4xl font-normal text-emerald-400 tracking-widest uppercase drop-shadow-md mt-[-5px]">
+                   <span className="text-2xl font-normal text-emerald-400 tracking-widest uppercase drop-shadow-md mt-[-2px]">
                        {player.position.substring(0, 3)}
                    </span>
               </div>
-              <h1 className={`${getNameSizeClass(player.name)} font-black text-white uppercase tracking-tighter mb-3 drop-shadow-lg w-full break-words`}>
+              
+              {/* Nome com fonte ajustada pelo helper (que foi reduzido) */}
+              <h1 className={`${getNameSizeClass(player.name)} font-black text-white uppercase tracking-tighter mb-2 drop-shadow-lg w-full break-words`}>
                   {player.name}
               </h1>
-              <div className="flex items-center gap-2 text-emerald-400 drop-shadow-md opacity-90">
-                  <Zap size={15} strokeWidth={1} fill="currentColor" />
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-300">
+              
+              <div className="flex items-center gap-1.5 text-emerald-400 drop-shadow-md opacity-90">
+                  <Zap size={12} strokeWidth={1} fill="currentColor" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-slate-300">
                       {player.playStyle}
                   </span>
               </div>
           </div>
 
-          {/* Coluna da Direita (Foto) - AJUSTES AQUI */}
+          {/* Coluna da Direita (Foto) */}
           <div className="col-span-3 relative h-full flex items-end justify-center cursor-pointer group" onClick={() => setIsEditingPhoto(true)}>
-              {/* Glow effect atrás da foto */}
-              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-56 h-56 bg-emerald-400/20 rounded-full blur-3xl -z-10"></div>
+              <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-52 h-56 bg-emerald-400/20 rounded-full blur-3xl -z-10"></div>
               
               {player.photo_url ? (
-                // AJUSTE: scale-110 para aumentar a foto, max-h-[110%] para permitir sair um pouco do container
                 <img 
                     src={player.photo_url} 
                     alt={player.name} 
-                    className="w-full h-full object-contain object-bottom drop-shadow-[0_15px_15px_rgba(0,0,0,0.6)] transform scale-110 translate-y-0 transition-transform group-hover:scale-130 duration-300 [mask-image:linear-gradient(to_top,transparent,black_20%)]" 
+                    className="w-full h-full object-contain object-bottom drop-shadow-[0_15px_15px_rgba(0,0,0,0.6)] transform scale-125 -translate-y-11 transition-transform group-hover:scale-130 duration-300 [mask-image:linear-gradient(to_top,transparent,black_30%)]" 
                 />
               ) : (
                 <User size={180} className="text-slate-700 mb-10 opacity-50" />
@@ -202,9 +204,9 @@ const Home: React.FC<HomeProps> = ({ player, matches, onPlayerUpdate }) => {
       </div>
 
       {/* Stats Row */}
-      {/* AJUSTE: gap-2 para caber melhor em telas pequenas */}
       <div className="grid grid-cols-4 gap-2 px-4 mb-8 mt-2">
-         <StatsBox label="TÍTULOS" value={stats.titles} color="text-emerald-400" />
+         <StatsBox label="TÍTULOS" value={stats.titles} color="text-emerald-400"
+         subtext={`_`} />
          <StatsBox label="JOGOS" value={stats.gamesPlayed} color="text-emerald-400" subtext={`${stats.wins} Vitórias`} />
          <StatsBox label="GOLS" value={stats.goals} color="text-emerald-400" subtext={`${stats.gamesPlayed ? (stats.goals/stats.gamesPlayed).toFixed(1) : '0'} G/J`} />
          <StatsBox label="ASSIST" value={stats.assists} color="text-emerald-400" subtext={`${stats.gamesPlayed ? (stats.assists/stats.gamesPlayed).toFixed(1) : '0'} A/J`} />
@@ -230,8 +232,7 @@ const Home: React.FC<HomeProps> = ({ player, matches, onPlayerUpdate }) => {
         </div>
       </div>
       
-      {/* MODALS (Mantidos iguais, omitido para brevidade, mas estão no arquivo completo se precisar) */}
-      {/* ... (código dos modais de foto) ... */}
+      {/* Modals mantidos */}
       {isEditingPhoto && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
               <div className="bg-slate-800 border border-slate-700 rounded-xl shadow-2xl w-full max-w-sm p-6 relative">
