@@ -152,14 +152,30 @@ const Home: React.FC<HomeProps> = ({ player, matches, onPlayerUpdate }) => {
   const confirmRemovePhoto = async () => await savePhoto('');
   const closePhotoModal = () => { setIsEditingPhoto(false); setPreviewImage(null); }
 
-  return (
-    <div className="w-full max-w-lg mx-auto pb-24 animate-fade-in pt-8">
+return (
+    // 1. Adicione 'relative' aqui para o background ficar preso neste container
+    <div className="w-full max-w-lg mx-auto pb-24 animate-fade-in pt-2 relative">
+      
+      {/* --- NOVO: BACKGROUND ATRÁS DO CARD --- */}
+      <div className="absolute top-0 left-0 w-full h-[420px] z-0 overflow-hidden rounded-3x1 [mask-image:linear-gradient(to_top,transparent,black_50%)]">
+          {/* Opção A: Imagem de Fundo (Substitua o src pelo seu link) */}
+          <img 
+            src="/fundo.png" 
+            alt="Background" 
+            className="w-full h-full object-cover opacity-10"
+              // Ajuste a opacidade aqui
+          />
+          {/* Máscara para suavizar a borda inferior */}
+          <div className="absolute bottom-0 left-0 w-full h-20 bg-gradient-to-t from-slate-1900 to-transparent"></div>
+      </div>
+
       {/* Top Section: FIFA Card Layout */}
-      <div className="grid grid-cols-5 px-5 relative z-10 h-[380px] items-end">
+      {/* 2. Mantemos o z-10 aqui para o texto ficar NA FRENTE do background */}
+      <div className="grid grid-cols-5 px-6 relative z-10 h-[420px] items-end">
           
-          {/* AJUSTE 2: Coluna da Esquerda (Info) - Movido para o meio (items-center no eixo Y do grid) ou ajustando padding */}
-          {/* Usei 'self-center' e 'pb-10' para tentar alinhar o topo do número com o topo da imagem */}
+          {/* Coluna da Esquerda (Info) */}
           <div className="col-span-2 flex flex-col items-start self-center pb-20 z-20 pl-1">
+             {/* ... (conteúdo das informações mantém igual) ... */}
               <div className="flex flex-col items-start w-full mb-2">
                    <div className="relative leading-none">
                        {/* AJUSTE 3: Fonte menor para o OVR */}
