@@ -2,24 +2,24 @@ import { supabase } from './supabaseClient';
 import { Player, PlayerFormData, PlayerPosition } from '../types';
 
 // Tabela de Pesos Baseada no CSV (Porcentagem do OVR)
-const OVR_WEIGHTS = {
+// EXPORTADA para ser usada no matchService
+export const OVR_WEIGHTS = {
   [PlayerPosition.GOLEIRO]:    { pace: 0.20, shooting: 0.05, passing: 0.15, defending: 0.60 },
   [PlayerPosition.DEFENSOR]:   { pace: 0.20, shooting: 0.05, passing: 0.25, defending: 0.50 },
   [PlayerPosition.MEIO_CAMPO]: { pace: 0.20, shooting: 0.20, passing: 0.50, defending: 0.10 },
   [PlayerPosition.ATACANTE]:   { pace: 0.20, shooting: 0.60, passing: 0.15, defending: 0.05 },
-  // Fallback genérico caso a posição não bata
+  // Fallback genérico
   'default':                   { pace: 0.25, shooting: 0.25, passing: 0.25, defending: 0.25 }
 };
 
 export const calculateWeightedOvr = (position: string, attr: { pace: number, shooting: number, passing: number, defending: number }) => {
-  // Normaliza a posição para garantir o match com o Enum ou string
   const posKey = Object.values(PlayerPosition).includes(position as PlayerPosition) 
     ? position as PlayerPosition 
     : 'default';
 
   const w = OVR_WEIGHTS[posKey] || OVR_WEIGHTS['default'];
   
-  // Cálculo ponderado direto conforme a tabela
+  // Cálculo ponderado direto
   const weightedSum = 
     (attr.pace * w.pace) + 
     (attr.shooting * w.shooting) + 
@@ -96,7 +96,7 @@ export const playerService = {
           const gainPass = Math.round(Number(p.passing_acc || 0) / 4);
           const gainDef = Math.round(Number(p.defending_acc || 0) / 4);
 
-          // Aplica aos atributos base (Limitado entre 1 e 99)
+          // Aplica aos atributos base (Clamp 1-99)
           let newPace = Math.max(1, Math.min(99, p.pace + gainPace));
           let newShoot = Math.max(1, Math.min(99, p.shooting + gainShoot));
           let newPass = Math.max(1, Math.min(99, p.passing + gainPass));
@@ -106,8 +106,7 @@ export const playerService = {
           const rawNewOvr = calculateWeightedOvr(p.position, { pace: newPace, shooting: newShoot, passing: newPass, defending: newDef });
           let finalOvr = Math.round(rawNewOvr);
 
-          // (Opcional) Trava de segurança +/- 2 pontos no OVR geral. 
-          // Se quiser deixar o sistema livre (sem teto), remova as duas linhas abaixo.
+          // Trava de segurança +/- 2 pontos no OVR geral (Opcional, pode remover se quiser livre)
           const currentOvr = p.initial_ovr;
           const diff = finalOvr - currentOvr;
           if (diff > 2) finalOvr = currentOvr + 2;
