@@ -1,14 +1,14 @@
 import { supabase } from './supabaseClient';
 import { Player, PlayerFormData, PlayerPosition } from '../types';
 
-// Tabela de Pesos Baseada no CSV (Porcentagem do OVR)
-// EXPORTADA para ser usada no matchService
+// [CHECKPOINT V5] Tabela Mestra de Pesos
+// Define quanto cada atributo impacta no OVR e na distribuição de bônus
 export const OVR_WEIGHTS = {
   [PlayerPosition.GOLEIRO]:    { pace: 0.20, shooting: 0.05, passing: 0.15, defending: 0.60 },
   [PlayerPosition.DEFENSOR]:   { pace: 0.20, shooting: 0.05, passing: 0.25, defending: 0.50 },
   [PlayerPosition.MEIO_CAMPO]: { pace: 0.20, shooting: 0.20, passing: 0.50, defending: 0.10 },
   [PlayerPosition.ATACANTE]:   { pace: 0.20, shooting: 0.60, passing: 0.15, defending: 0.05 },
-  // Fallback genérico
+  // Fallback
   'default':                   { pace: 0.25, shooting: 0.25, passing: 0.25, defending: 0.25 }
 };
 
@@ -19,14 +19,11 @@ export const calculateWeightedOvr = (position: string, attr: { pace: number, sho
 
   const w = OVR_WEIGHTS[posKey] || OVR_WEIGHTS['default'];
   
-  // Cálculo ponderado direto
-  const weightedSum = 
-    (attr.pace * w.pace) + 
-    (attr.shooting * w.shooting) + 
-    (attr.passing * w.passing) + 
-    (attr.defending * w.defending);
-
-  return weightedSum;
+  // Cálculo ponderado usando a tabela
+  return (attr.pace * w.pace) + 
+         (attr.shooting * w.shooting) + 
+         (attr.passing * w.passing) + 
+         (attr.defending * w.defending);
 };
 
 export const playerService = {
@@ -90,13 +87,12 @@ export const playerService = {
       let count = 0;
       
       for (const p of players) {
-          // REGRA DA DIVISÃO POR 4 E ARREDONDAMENTO
+          // [CHECKPOINT V5] Regra da divisão por 4 com arredondamento
           const gainPace = Math.round(Number(p.pace_acc || 0) / 4);
           const gainShoot = Math.round(Number(p.shooting_acc || 0) / 4);
           const gainPass = Math.round(Number(p.passing_acc || 0) / 4);
           const gainDef = Math.round(Number(p.defending_acc || 0) / 4);
 
-          // Aplica aos atributos base (Clamp 1-99)
           let newPace = Math.max(1, Math.min(99, p.pace + gainPace));
           let newShoot = Math.max(1, Math.min(99, p.shooting + gainShoot));
           let newPass = Math.max(1, Math.min(99, p.passing + gainPass));
@@ -106,13 +102,12 @@ export const playerService = {
           const rawNewOvr = calculateWeightedOvr(p.position, { pace: newPace, shooting: newShoot, passing: newPass, defending: newDef });
           let finalOvr = Math.round(rawNewOvr);
 
-          // Trava de segurança +/- 2 pontos no OVR geral (Opcional, pode remover se quiser livre)
+          // Trava de segurança +/- 2 pontos no OVR geral
           const currentOvr = p.initial_ovr;
           const diff = finalOvr - currentOvr;
           if (diff > 2) finalOvr = currentOvr + 2;
           if (diff < -2) finalOvr = currentOvr - 2;
 
-          // Histórico
           const history = Array.isArray(p.ovr_history) ? [...p.ovr_history] : [];
           if (finalOvr !== currentOvr) {
               history.push({ date: new Date().toISOString(), ovr: finalOvr });
@@ -121,17 +116,10 @@ export const playerService = {
 
           // Salva no banco e ZERA os acumuladores
           await supabase.from('players').update({
-              pace: newPace,
-              shooting: newShoot,
-              passing: newPass,
-              defending: newDef,
+              pace: newPace, shooting: newShoot, passing: newPass, defending: newDef,
               initial_ovr: finalOvr,
-              pace_acc: 0, 
-              shooting_acc: 0, 
-              passing_acc: 0, 
-              defending_acc: 0,
-              monthly_delta: 0,
-              ovr_history: history
+              pace_acc: 0, shooting_acc: 0, passing_acc: 0, defending_acc: 0,
+              monthly_delta: 0, ovr_history: history
           }).eq('id', p.id);
       }
       return `Virada de mês concluída! ${count} jogadores atualizaram o OVR.`;
