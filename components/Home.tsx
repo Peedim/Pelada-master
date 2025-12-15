@@ -4,13 +4,6 @@ import { playerService, calculateWeightedOvr } from '../services/playerService';
 import { matchService } from '../services/matchService'; 
 import { Zap, TrendingUp, User, Camera, Upload, X, Loader2, Trash2, Check, RefreshCw, ChevronsUp, ChevronsDown, Minus, AlertTriangle } from 'lucide-react';
 
-interface HomeProps {
-  player: Player;
-  matches: Match[]; 
-  onPlayerUpdate?: () => void;
-}
-
-// AJUSTE 1: Reduzi os tamanhos das fontes do nome para ficar mais compacto
 const getNameSizeClass = (name: string) => {
     const length = name.length;
     if (length > 16) return "text-base leading-tight"; 
@@ -27,6 +20,12 @@ const StatsBox = ({ label, value, color, subtext }: { label: string, value: numb
   </div>
 );
 
+interface HomeProps {
+  player: Player;
+  matches: Match[]; 
+  onPlayerUpdate?: () => void;
+}
+
 const Home: React.FC<HomeProps> = ({ player, matches, onPlayerUpdate }) => {
   const [isEditingPhoto, setIsEditingPhoto] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
@@ -34,22 +33,31 @@ const Home: React.FC<HomeProps> = ({ player, matches, onPlayerUpdate }) => {
   const [isDeletePhotoConfirmOpen, setIsDeletePhotoConfirmOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
+  // --- LÓGICA DA SETA ATUALIZADA (PREVISÃO DE VIRADA) ---
   const arrowIndicator = useMemo(() => {
       const { pace, shooting, passing, defending } = player.attributes;
-      let pPace = Math.round(pace + (player.accumulators.pace / 4));
-      let pShoot = Math.round(shooting + (player.accumulators.shooting / 4));
-      let pPass = Math.round(passing + (player.accumulators.passing / 4));
-      let pDef = Math.round(defending + (player.accumulators.defending / 4));
-      pPace = Math.max(1, Math.min(99, pPace));
-      pShoot = Math.max(1, Math.min(99, pShoot));
-      pPass = Math.max(1, Math.min(99, pPass));
-      pDef = Math.max(1, Math.min(99, pDef));
+      
+      // Simula o cálculo da Virada (Divide por 4 e Arredonda)
+      const gainPace = Math.round(player.accumulators.pace / 4);
+      const gainShoot = Math.round(player.accumulators.shooting / 4);
+      const gainPass = Math.round(player.accumulators.passing / 4);
+      const gainDef = Math.round(player.accumulators.defending / 4);
+
+      let pPace = Math.max(1, Math.min(99, pace + gainPace));
+      let pShoot = Math.max(1, Math.min(99, shooting + gainShoot));
+      let pPass = Math.max(1, Math.min(99, passing + gainPass));
+      let pDef = Math.max(1, Math.min(99, defending + gainDef));
+
+      // Usa a nova função ponderada importada
       const futureOvrRaw = calculateWeightedOvr(player.position as string, { pace: pPace, shooting: pShoot, passing: pPass, defending: pDef });
       const futureOvr = Math.round(futureOvrRaw);
+      
       const diff = futureOvr - player.initial_ovr;
-      if (diff > 0) return { icon: ChevronsUp, color: "text-emerald-400" };
-      if (diff < 0) return { icon: ChevronsDown, color: "text-red-500" };
-      return { icon: Minus, color: "text-slate-500" };
+      
+      if (diff > 0) return { icon: ChevronsUp, color: "text-emerald-400", show: true };
+      if (diff < 0) return { icon: ChevronsDown, color: "text-red-500", show: true };
+      // Se não mudou (diff === 0), retorna show: false para não exibir nada
+      return { icon: null, color: "", show: false }; 
   }, [player]);
 
   const FormIcon = arrowIndicator.icon;
@@ -143,6 +151,7 @@ const Home: React.FC<HomeProps> = ({ player, matches, onPlayerUpdate }) => {
               name: rest.name, email: rest.email, position: rest.position, playStyle: rest.playStyle,
               shirt_number: rest.shirt_number, initial_ovr: rest.initial_ovr, is_admin: rest.is_admin,
               photo_url: url, pace: attributes.pace, shooting: attributes.shooting, passing: attributes.passing,
+              defending: attributes.defending
           };
           await playerService.update(player.id, updatePayload);
           setPreviewImage(null); setIsEditingPhoto(false); setIsDeletePhotoConfirmOpen(false); window.location.reload();
@@ -152,45 +161,33 @@ const Home: React.FC<HomeProps> = ({ player, matches, onPlayerUpdate }) => {
   const confirmRemovePhoto = async () => await savePhoto('');
   const closePhotoModal = () => { setIsEditingPhoto(false); setPreviewImage(null); }
 
-return (
-    // 1. Adicione 'relative' aqui para o background ficar preso neste container
+  return (
     <div className="w-full max-w-lg mx-auto pb-24 animate-fade-in pt-2 relative">
       
-      {/* --- NOVO: BACKGROUND ATRÁS DO CARD --- */}
+      {/* Background */}
       <div className="absolute top-0 left-0 w-full h-[420px] z-0 overflow-hidden rounded-3x1 [mask-image:linear-gradient(to_top,transparent,black_50%)]">
-          {/* Opção A: Imagem de Fundo (Substitua o src pelo seu link) */}
-          <img 
-            src="/fundo.png" 
-            alt="Background" 
-            className="w-full h-full object-cover opacity-10"
-              // Ajuste a opacidade aqui
-          />
-          {/* Máscara para suavizar a borda inferior */}
+          <img src="/fundo.png" alt="Background" className="w-full h-full object-cover opacity-10"/>
           <div className="absolute bottom-0 left-0 w-full h-20 bg-gradient-to-t from-slate-1900 to-transparent"></div>
       </div>
 
-      {/* Top Section: FIFA Card Layout */}
-      {/* 2. Mantemos o z-10 aqui para o texto ficar NA FRENTE do background */}
       <div className="grid grid-cols-5 px-6 relative z-10 h-[420px] items-end">
           
-          {/* Coluna da Esquerda (Info) */}
           <div className="col-span-2 flex flex-col items-start self-center pb-20 z-20 pl-1">
-             {/* ... (conteúdo das informações mantém igual) ... */}
               <div className="flex flex-col items-start w-full mb-2">
                    <div className="relative leading-none">
-                       {/* AJUSTE 3: Fonte menor para o OVR */}
                        <span className="text-[3.5rem] font-black text-white tracking-tighter drop-shadow-2xl block -ml-1">
                            {player.initial_ovr}
                        </span>
-                       {/* Seta ajustada para o novo tamanho */}
-                       <FormIcon size={30} className={`absolute top-4 -right-8 ${formColor} drop-shadow-lg animate-pulse`} strokeWidth={3} />
+                       {/* Renderização Condicional da Seta: Só exibe se show=true */}
+                       {arrowIndicator.show && FormIcon && (
+                           <FormIcon size={30} className={`absolute top-4 -right-8 ${formColor} drop-shadow-lg animate-pulse`} strokeWidth={3} />
+                       )}
                    </div>
                    <span className="text-2xl font-normal text-emerald-400 tracking-widest uppercase drop-shadow-md mt-[-2px]">
                        {player.position.substring(0, 3)}
                    </span>
               </div>
               
-              {/* Nome com fonte ajustada pelo helper (que foi reduzido) */}
               <h1 className={`${getNameSizeClass(player.name)} font-black text-white uppercase tracking-tighter mb-2 drop-shadow-lg w-full break-words`}>
                   {player.name}
               </h1>
@@ -203,32 +200,23 @@ return (
               </div>
           </div>
 
-          {/* Coluna da Direita (Foto) */}
           <div className="col-span-3 relative h-full flex items-end justify-center cursor-pointer group" onClick={() => setIsEditingPhoto(true)}>
               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-52 h-56 bg-emerald-400/20 rounded-full blur-3xl -z-10"></div>
-              
               {player.photo_url ? (
-                <img 
-                    src={player.photo_url} 
-                    alt={player.name} 
-                    className="w-full h-full object-contain object-bottom drop-shadow-[0_15px_15px_rgba(0,0,0,0.6)] transform scale-125 -translate-y-11 transition-transform group-hover:scale-130 duration-300 [mask-image:linear-gradient(to_top,transparent,black_30%)]" 
-                />
+                <img src={player.photo_url} alt={player.name} className="w-full h-full object-contain object-bottom drop-shadow-[0_15px_15px_rgba(0,0,0,0.6)] transform scale-125 -translate-y-11 transition-transform group-hover:scale-130 duration-300 [mask-image:linear-gradient(to_top,transparent,black_30%)]" />
               ) : (
                 <User size={180} className="text-slate-700 mb-10 opacity-50" />
               )}
           </div>
       </div>
 
-      {/* Stats Row */}
       <div className="grid grid-cols-4 gap-2 px-4 mb-8 mt-2">
-         <StatsBox label="TÍTULOS" value={stats.titles} color="text-emerald-400"
-         subtext={`_`} />
+         <StatsBox label="TÍTULOS" value={stats.titles} color="text-emerald-400" subtext={`_`} />
          <StatsBox label="JOGOS" value={stats.gamesPlayed} color="text-emerald-400" subtext={`${stats.wins} Vitórias`} />
          <StatsBox label="GOLS" value={stats.goals} color="text-emerald-400" subtext={`${stats.gamesPlayed ? (stats.goals/stats.gamesPlayed).toFixed(1) : '0'} G/J`} />
          <StatsBox label="ASSIST" value={stats.assists} color="text-emerald-400" subtext={`${stats.gamesPlayed ? (stats.assists/stats.gamesPlayed).toFixed(1) : '0'} A/J`} />
       </div>
 
-      {/* CHART */}
       <div className="px-4">
         <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 relative overflow-hidden shadow-xl">
            <div className="flex items-center gap-2 mb-6">
@@ -248,7 +236,7 @@ return (
         </div>
       </div>
       
-      {/* Modals mantidos */}
+      {/* Modals mantidos (omitido para brevidade) */}
       {isEditingPhoto && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
               <div className="bg-slate-800 border border-slate-700 rounded-xl shadow-2xl w-full max-w-sm p-6 relative">
