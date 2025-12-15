@@ -9,16 +9,19 @@ import MatchHistory from './components/MatchHistory';
 import DataExport from './components/DataExport';
 import FooterNav from './components/FooterNav';
 import Home from './components/Home';
-import Login from './components/Login'; // <--- IMPORTANTE
+import Login from './components/Login';
+import Career from './components/Career'; // <--- IMPORTADO
 import { Player, PlayerFormData, Match, MatchStatus } from './types';
 import { playerService } from './services/playerService';
 import { matchService } from './services/matchService';
-import { supabase } from './services/supabaseClient'; // <--- IMPORTANTE
-import { LayoutDashboard, Shuffle, FolderOpen, History, Bell, LogOut } from 'lucide-react'; // Adicionei LogOut
+import { supabase } from './services/supabaseClient';
+import { LayoutDashboard, Shuffle, FolderOpen, History, Bell, LogOut } from 'lucide-react';
 
-// Admin Sub-Views e Main Tab (mantidos iguais)
+// Admin Sub-Views
 type AdminView = 'dashboard' | 'create' | 'edit' | 'sorter' | 'drafts' | 'draft-editor' | 'active-match' | 'history';
-type MainTab = 'home' | 'admin';
+
+// MUDANÇA AQUI: Adicionado 'career'
+type MainTab = 'home' | 'career' | 'admin';
 
 const App: React.FC = () => {
   const [mainTab, setMainTab] = useState<MainTab>('home');
@@ -34,11 +37,9 @@ const App: React.FC = () => {
   
   const [previousAdminView, setPreviousAdminView] = useState<AdminView>('drafts');
 
-  // --- NOVA LÓGICA DE AUTH ---
-  const [session, setSession] = useState<any>(null); // Sessão do Supabase
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null); // ID do Player vinculado
+  const [session, setSession] = useState<any>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
-  // 1. Monitorar a sessão do Supabase
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
@@ -51,12 +52,11 @@ const App: React.FC = () => {
     return () => subscription.unsubscribe();
   }, []);
 
-  // 2. Carregar dados QUANDO houver sessão
   useEffect(() => {
     if (session) {
       loadInitialData();
     } else {
-      setLoading(false); // Para mostrar a tela de login
+      setLoading(false);
     }
   }, [session]);
 
@@ -72,8 +72,6 @@ const App: React.FC = () => {
       setPlayers(allPlayers);
       setMatches(allMatches);
 
-      // VINCULAR AUTH -> PLAYER
-      // Pegamos o email do login e procuramos na tabela players
       if (session?.user?.email) {
         const userEmail = session.user.email.toLowerCase();
         const foundPlayer = allPlayers.find(p => p.email.toLowerCase() === userEmail);
@@ -81,7 +79,6 @@ const App: React.FC = () => {
         if (foundPlayer) {
           setCurrentUserId(foundPlayer.id);
         } else {
-          // Opcional: Se logou mas não tem player, pode avisar ou criar um rascunho
           console.warn("Usuário logado, mas nenhum jogador encontrado com este email.");
         }
       }
@@ -94,7 +91,6 @@ const App: React.FC = () => {
   };
 
   const refreshData = async () => {
-    // Mesma lógica de refresh
     try {
       const [allPlayers, allMatches] = await Promise.all([
         playerService.getAll(),
@@ -115,13 +111,10 @@ const App: React.FC = () => {
   };
 
   // --- RENDERIZAÇÃO CONDICIONAL ---
-
-  // Se não estiver logado, mostra Login
   if (!session) {
     return <Login onLoginSuccess={() => {}} />;
   }
 
-  // Se estiver carregando dados após login
   if (loading) {
     return (
       <div className="flex flex-col items-center justify-center h-screen bg-slate-900 space-y-4">
@@ -131,7 +124,6 @@ const App: React.FC = () => {
     );
   }
 
-  // Se logou, mas o email não bate com nenhum jogador na tabela
   if (!currentUserId && session) {
     return (
       <div className="flex flex-col items-center justify-center h-screen bg-slate-900 p-6 text-center">
@@ -152,12 +144,10 @@ const App: React.FC = () => {
     );
   }
 
-  // --- RESTO DO APP (Se passou por tudo acima) ---
-  
   const currentUser = players.find(p => p.id === currentUserId) || null;
   const isAdmin = currentUser?.is_admin || false;
 
-  // Funções de handler (mantidas iguais, omiti para brevidade, mantenha as suas originais)
+  // Handlers (Mantidos)
   const handleAddPlayerClick = () => { setSelectedPlayer(undefined); setAdminView('create'); };
   const handleEditPlayerClick = (player: Player) => { setSelectedPlayer(player); setAdminView('edit'); };
   const handleFormSubmit = async (data: PlayerFormData) => {
@@ -190,7 +180,6 @@ const App: React.FC = () => {
       {/* HEADER */}
       <div className="border-b border-slate-800 bg-slate-900/90 sticky top-0 z-40 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-          {/* Logo / Title */}
           {mainTab === 'home' ? (
              <div className="flex items-center gap-4">
                 <div className="grid grid-cols-2 gap-1">
@@ -211,7 +200,6 @@ const App: React.FC = () => {
              {mainTab === 'home' ? 'PELADA MANAGER' : ''}
           </div>
 
-          {/* Right Actions */}
           <div className="flex items-center gap-2">
             {mainTab === 'admin' && (
               <nav className="flex space-x-1 bg-slate-800/50 p-1 rounded-lg border border-slate-700/50 overflow-x-auto mr-2 custom-scrollbar">
@@ -222,8 +210,13 @@ const App: React.FC = () => {
               </nav>
             )}
             {mainTab === 'admin' && <DataExport />}
+            {mainTab === 'home' && (
+               <button className="relative p-2 text-slate-400 hover:text-white">
+                  <Bell size={24} />
+                  <span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full"></span>
+               </button>
+            )}
             
-            {/* Logout Button */}
             <button 
               onClick={handleLogout}
               className="p-2 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-full transition-colors"
@@ -239,6 +232,17 @@ const App: React.FC = () => {
       <main className="max-w-7xl mx-auto py-4">
         {mainTab === 'home' && currentUser && (
           <Home player={currentUser} matches={matches} />
+        )}
+        
+        {/* NOVA TELA DE CARREIRA */}
+        {mainTab === 'career' && currentUser && (
+            <Career currentUser={currentUser} />
+        )}
+        
+        {mainTab === 'home' && !currentUser && (
+          <div className="flex flex-col items-center justify-center pt-20 text-slate-500">
+             <p>Usuário não identificado.</p>
+          </div>
         )}
         
         {mainTab === 'admin' && (

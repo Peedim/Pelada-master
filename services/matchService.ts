@@ -3,33 +3,25 @@ import { Match, MatchStatus, Team, Player, Game, Goal, GameStatus, GamePhase, St
 import { generateFixtures } from '../utils/fixtureGenerator';
 import { playerService } from './playerService';
 
-// --- HELPER: Calcula Stats do Time (Ignorando Goleiros na Média) ---
 const calculateTeamStats = (players: Player[]) => {
-    // Filtra apenas linha para a média (para manter a consistência do sorteio)
     const linePlayers = players.filter(p => p.position !== PlayerPosition.GOLEIRO);
-    
     const totalOvr = players.reduce((acc, p) => acc + (p.initial_ovr || 0), 0);
-    
-    // Média considera APENAS linha
     const avgOvr = linePlayers.length > 0 
         ? Math.round(linePlayers.reduce((acc, p) => acc + p.initial_ovr, 0) / linePlayers.length) 
         : 0;
-
     const styleCounts: Record<string, number> = {};
     players.forEach(p => {
         const style = p.playStyle || 'Unknown';
         styleCounts[style] = (styleCounts[style] || 0) + 1;
     });
-
     return { totalOvr, avgOvr, styleCounts };
 };
 
-// --- HELPER: Transforma dados do Banco ---
 const mapDatabaseToMatch = (dbMatch: any): Match => {
   const teams: Team[] = dbMatch.match_teams.map((t: any) => {
     const players: Player[] = t.team_players.map((tp: any) => ({
       ...tp.player,
-      playStyle: tp.player.play_style, // Garante mapeamento
+      playStyle: tp.player.play_style,
       attributes: {
         pace: tp.player.pace, shooting: tp.player.shooting, passing: tp.player.passing, defending: tp.player.defending
       },
@@ -38,17 +30,8 @@ const mapDatabaseToMatch = (dbMatch: any): Match => {
         passing: Number(tp.player.passing_acc || 0), defending: Number(tp.player.defending_acc || 0)
       }
     }));
-
     const { totalOvr, avgOvr, styleCounts } = calculateTeamStats(players);
-
-    return {
-      id: t.id,
-      name: t.name,
-      players,
-      totalOvr,
-      avgOvr,
-      styleCounts
-    };
+    return { id: t.id, name: t.name, players, totalOvr, avgOvr, styleCounts };
   });
 
   return {
@@ -75,7 +58,8 @@ const mapDatabaseToMatch = (dbMatch: any): Match => {
       scorerId: gl.scorer_id,
       assistId: gl.assist_id,
       minute: gl.minute
-    }))
+    })),
+    champion_photo_url: dbMatch.champion_photo_url // Mapeamento do novo campo
   };
 };
 
@@ -276,7 +260,6 @@ export const matchService = {
     const lastPlaceId = standings[standings.length - 1]?.teamId;
     const allGoals = match.goals || [];
     
-    // Stats calculation (Mantida a mesma lógica da sua V3 com tabela de AP)
     const playerStats: Record<string, any> = {};
     match.teams.forEach(t => t.players.forEach(p => playerStats[p.id] = { matches: 0, wins: 0, losses: 0, goals: 0, assists: 0, cleanSheets: 0, goalsConceded: 0 }));
 
@@ -359,5 +342,15 @@ export const matchService = {
         if (b.goalDiff !== a.goalDiff) return b.goalDiff - a.goalDiff;
         return b.goalsFor - a.goalsFor;
     });
+  },
+
+  // --- NOVA FUNÇÃO: Atualizar Foto do Campeão ---
+  updateChampionPhoto: async (matchId: string, url: string): Promise<void> => {
+    const { error } = await supabase
+      .from('matches')
+      .update({ champion_photo_url: url })
+      .eq('id', matchId);
+      
+    if (error) throw error;
   }
 };

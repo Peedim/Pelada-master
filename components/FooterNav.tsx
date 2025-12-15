@@ -1,4 +1,3 @@
-
 import React from 'react';
 import { Home, Shield, Trophy, Activity } from 'lucide-react';
 
@@ -18,14 +17,14 @@ const FooterNav: React.FC<FooterNavProps> = ({ currentTab, onTabChange, isAdmin 
           className={`flex flex-col items-center justify-center w-16 h-full space-y-1 transition-colors ${currentTab === 'home' ? 'text-green-500' : 'text-slate-500 hover:text-slate-300'}`}
         >
           <Home size={24} strokeWidth={currentTab === 'home' ? 2.5 : 2} />
-          {/* <span className="text-[10px] font-medium">Home</span> */}
         </button>
 
         <button 
-          className="flex flex-col items-center justify-center w-16 h-full space-y-1 text-slate-600 cursor-not-allowed"
-          title="Em breve"
+          onClick={() => onTabChange('career')} // <--- Linkado aqui
+          className={`flex flex-col items-center justify-center w-16 h-full space-y-1 transition-colors ${currentTab === 'career' ? 'text-yellow-500' : 'text-slate-500 hover:text-slate-300'}`}
+          title="Carreira"
         >
-          <Activity size={24} />
+          <Activity size={24} strokeWidth={currentTab === 'career' ? 2.5 : 2} />
         </button>
 
         <button 
@@ -41,7 +40,6 @@ const FooterNav: React.FC<FooterNavProps> = ({ currentTab, onTabChange, isAdmin 
             className={`flex flex-col items-center justify-center w-16 h-full space-y-1 transition-colors ${currentTab === 'admin' ? 'text-cyan-500' : 'text-slate-500 hover:text-slate-300'}`}
           >
             <Shield size={24} strokeWidth={currentTab === 'admin' ? 2.5 : 2} />
-            {/* <span className="text-[10px] font-medium">Admin</span> */}
           </button>
         )}
 

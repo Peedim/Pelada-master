@@ -183,7 +183,7 @@ return (
                            {player.initial_ovr}
                        </span>
                        {/* Seta ajustada para o novo tamanho */}
-                       <FormIcon size={24} className={`absolute top-4 -right-8 ${formColor} drop-shadow-lg animate-pulse`} strokeWidth={0} />
+                       <FormIcon size={30} className={`absolute top-4 -right-8 ${formColor} drop-shadow-lg animate-pulse`} strokeWidth={3} />
                    </div>
                    <span className="text-2xl font-normal text-emerald-400 tracking-widest uppercase drop-shadow-md mt-[-2px]">
                        {player.position.substring(0, 3)}

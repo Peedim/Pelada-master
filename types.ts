@@ -44,7 +44,7 @@ export interface Player {
   email: string;
   position: PlayerPosition | string;
   playStyle: PlayStyle | string;
-  shirt_number?: number; // <--- ALTERADO: Agora é opcional
+  shirt_number?: number;
   initial_ovr: number;
   photo_url?: string;
   is_admin: boolean;
@@ -54,9 +54,7 @@ export interface Player {
   ovr_history: OvrHistoryEntry[];
 }
 
-export interface PlayerFormData extends Omit<Player, 'id' | 'created_at' | 'attributes' | 'accumulators' | 'monthly_delta' | 'ovr_history'>, PlayerAttributes {
-  // Flat structure for form
-}
+export interface PlayerFormData extends Omit<Player, 'id' | 'created_at' | 'attributes' | 'accumulators' | 'monthly_delta' | 'ovr_history'>, PlayerAttributes {}
 
 export interface Team {
   id: string;
@@ -106,6 +104,7 @@ export interface Match {
   teams: Team[];
   games: Game[];
   goals: Goal[];
+  champion_photo_url?: string; // <--- NOVO CAMPO
 }
 
 export interface Standing {
