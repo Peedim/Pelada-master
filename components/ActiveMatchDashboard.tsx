@@ -7,7 +7,7 @@ import { ArrowLeft, Trophy, Calendar, List, PlayCircle, CheckCircle2, AlertCircl
 interface ActiveMatchDashboardProps {
   matchId: string;
   onBack: () => void;
-  onMatchUpdate?: () => void;
+  onMatchUpdate: () => void;
 }
 
 const ActiveMatchDashboard: React.FC<ActiveMatchDashboardProps> = ({ matchId, onBack, onMatchUpdate }) => {
@@ -15,6 +15,8 @@ const ActiveMatchDashboard: React.FC<ActiveMatchDashboardProps> = ({ matchId, on
   const [activeTab, setActiveTab] = useState<'games' | 'standings'>('games');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  
+  // Modals
   const [isFinishEventConfirmOpen, setIsFinishEventConfirmOpen] = useState(false);
   const [isCancelEventConfirmOpen, setIsCancelEventConfirmOpen] = useState(false);
 
@@ -22,31 +24,55 @@ const ActiveMatchDashboard: React.FC<ActiveMatchDashboardProps> = ({ matchId, on
 
   const loadMatch = async () => {
     setLoading(true); setError(null);
-    try { await matchService.ensureFixtures(matchId); const data = await matchService.getById(matchId); if (!data) throw new Error("Evento não encontrado."); setMatch(data); } 
+    try { 
+        // Chama ensureFixtures com segurança
+        await matchService.ensureFixtures(matchId); 
+        const data = await matchService.getById(matchId); 
+        if (!data) throw new Error("Evento não encontrado."); 
+        setMatch(data); 
+    } 
     catch (e) { console.error(e); setError("Erro ao carregar dados."); } finally { setLoading(false); }
   };
 
-  const handleStartGame = async (gameId: string) => { if (!match || match.status === MatchStatus.FINISHED) return; const updated = await matchService.startGame(match.id, gameId); setMatch({ ...updated }); };
-  const handleUpdateMatch = (updated: Match) => { setMatch({ ...updated }); };
+  const handleStartGame = async (gameId: string) => { 
+      if (!match || match.status === MatchStatus.FINISHED) return; 
+      
+      // Atualiza status no banco para LIVE
+      const updated = await matchService.startGame(match.id, gameId); 
+      setMatch({ ...updated }); 
+      
+      // Rola suavemente para o topo onde o controle vai aparecer
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const handleUpdateMatch = () => { loadMatch(); };
+  
   const handleFinishEventClick = () => { if (!match) return; setIsFinishEventConfirmOpen(true); };
   const confirmFinishEvent = async () => { if (!match) return; await matchService.finishMatch(match.id); setIsFinishEventConfirmOpen(false); if (onMatchUpdate) onMatchUpdate(); onBack(); };
+  
   const handleCancelEventClick = () => { setIsCancelEventConfirmOpen(true); };
   const confirmCancelEvent = async () => { if (!match) return; await matchService.revertToDraft(match.id); setIsCancelEventConfirmOpen(false); if (onMatchUpdate) onMatchUpdate(); onBack(); };
 
   const standings = useMemo(() => { if (!match) return []; return matchService.calculateStandings(match); }, [match]);
+  
+  // LÓGICA RESTRITA: Só exibe controle se status for ESTRITAMENTE 'LIVE'
   const liveGame = match?.games.find(g => g.status === GameStatus.LIVE);
   
   const gamesByPhase = useMemo(() => {
       if (!match) return {};
       const groups: Record<string, Game[]> = {};
       const phaseLabels: Record<string, string> = { [GamePhase.PHASE_1]: 'Fase 1 (Pontos Corridos)', [GamePhase.PHASE_2]: 'Fase 2 (Intermediária)', [GamePhase.THIRD_PLACE]: 'Disputa de 3º Lugar', [GamePhase.FINAL]: 'Grande Final' };
-      match.games.sort((a,b) => a.sequence - b.sequence).forEach(game => { const label = phaseLabels[game.phase] || 'Outros'; if (!groups[label]) groups[label] = []; groups[label].push(game); });
+      
+      match.games.sort((a,b) => a.sequence - b.sequence).forEach(game => { 
+          const label = phaseLabels[game.phase] || 'Outros'; 
+          if (!groups[label]) groups[label] = []; 
+          groups[label].push(game); 
+      });
       return groups;
   }, [match]);
 
   const getTeamName = (id: string) => { if (id === 'TBD') return 'A Definir'; return match?.teams.find(t => t.id === id)?.name || 'Desconhecido'; };
   
-  // Helper de Cor para Texto
   const getTeamTextColor = (name: string) => {
       if (name.includes('Branco')) return 'text-slate-200';
       if (name.includes('Preto')) return 'text-slate-400';
@@ -67,6 +93,7 @@ const ActiveMatchDashboard: React.FC<ActiveMatchDashboardProps> = ({ matchId, on
         <div className="flex items-center gap-3"><button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-full text-slate-400 transition-colors"><ArrowLeft size={24} /></button><div><h2 className="text-2xl font-bold text-white flex items-center gap-2">{isEventFinished ? (<div className="px-2 py-0.5 rounded bg-slate-700 text-slate-300 text-xs uppercase">Finalizado</div>) : (<div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>)} Evento Ativo</h2><p className="text-slate-400 text-sm">{match.type} • {match.location}</p></div></div>
       </div>
 
+      {/* SÓ MOSTRA O CONTROLE SE TIVER JOGO AO VIVO */}
       {liveGame && !isEventFinished && (<LiveMatchControl match={match} game={liveGame} onUpdate={handleUpdateMatch} />)}
 
       <div className="flex border-b border-slate-700 mb-6"><button onClick={() => setActiveTab('games')} className={`px-6 py-3 font-medium text-sm transition-colors border-b-2 ${activeTab === 'games' ? 'border-green-500 text-white' : 'border-transparent text-slate-400 hover:text-white'}`}><div className="flex items-center gap-2"><List size={16} /> Jogos</div></button><button onClick={() => setActiveTab('standings')} className={`px-6 py-3 font-medium text-sm transition-colors border-b-2 ${activeTab === 'standings' ? 'border-green-500 text-white' : 'border-transparent text-slate-400 hover:text-white'}`}><div className="flex items-center gap-2"><Trophy size={16} /> Classificação</div></button></div>
@@ -81,6 +108,8 @@ const ActiveMatchDashboard: React.FC<ActiveMatchDashboardProps> = ({ matchId, on
                             {games.map(game => {
                                 const homeName = getTeamName(game.homeTeamId);
                                 const awayName = getTeamName(game.awayTeamId);
+                                const isLive = game.status === GameStatus.LIVE;
+                                
                                 return (
                                 <div key={game.id} className={`border p-4 rounded-lg flex items-center justify-between transition-colors ${game.status === GameStatus.FINISHED ? 'bg-slate-900/50 border-slate-800 opacity-75' : 'bg-slate-800 border-slate-700 hover:border-slate-600'}`}>
                                     <div className="flex-1 flex items-center justify-end gap-3">
@@ -95,7 +124,13 @@ const ActiveMatchDashboard: React.FC<ActiveMatchDashboardProps> = ({ matchId, on
                                     <div className="ml-6 border-l border-slate-700 pl-6 w-24 text-center">
                                         {game.status === GameStatus.WAITING && (
                                             game.homeTeamId !== 'TBD' && game.awayTeamId !== 'TBD' && !isEventFinished ? (
-                                                <button onClick={() => handleStartGame(game.id)} disabled={!!liveGame} className="bg-slate-700 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-slate-700 text-white px-3 py-1.5 rounded text-xs font-bold transition-colors flex items-center gap-1 w-full justify-center"><PlayCircle size={14} /> INICIAR</button>
+                                                <button 
+                                                    onClick={() => handleStartGame(game.id)} 
+                                                    disabled={!!liveGame} // Bloqueia se já tiver outro jogo rolando
+                                                    className="bg-slate-700 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-slate-700 text-white px-3 py-1.5 rounded text-xs font-bold transition-colors flex items-center gap-1 w-full justify-center"
+                                                >
+                                                    <PlayCircle size={14} /> INICIAR
+                                                </button>
                                             ) : (<span className="text-xs text-slate-500 italic">{game.homeTeamId === 'TBD' ? 'Aguardando' : 'Próximo'}</span>)
                                         )}
                                         {game.status === GameStatus.FINISHED && (<CheckCircle2 size={20} className="text-slate-600 mx-auto" />)}
