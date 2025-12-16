@@ -119,3 +119,59 @@ export interface Standing {
   goalsAgainst: number;
   goalDiff: number;
 }
+
+// --- RANKINGS & CONQUISTAS ---
+
+export type RankingCategory = 'wins' | 'goals' | 'assists' | 'clean_sheets';
+
+// Interface para um item da lista de ranking (ex: João, 10 gols)
+export interface PlayerRankingStats {
+  playerId: string;
+  playerName: string;
+  playerPhoto?: string;
+  position: string; // Para mostrar ícone ou cor
+  value: number;    // O número (gols, vitórias, etc)
+}
+
+// Interface que agrupa todos os rankings de um período
+export interface RankingsData {
+  wins: PlayerRankingStats[];
+  goals: PlayerRankingStats[];
+  assists: PlayerRankingStats[];
+  cleanSheets: PlayerRankingStats[];
+}
+
+// Interface para o dado salvo no banco (Hall da Fama)
+export interface MonthlyChampion {
+  id: string;
+  month_key: string; // "MM-YYYY"
+  category: RankingCategory;
+  player_id: string;
+  stat_value: number;
+  player?: Player; // Para o join ao exibir
+}
+
+// --- NOVAS INTERFACES PARA RANKING ---
+export interface PlayerRankingStats {
+  playerId: string;
+  playerName: string;
+  playerPhoto?: string;
+  position: string; 
+  value: number;
+}
+
+export interface RankingsData {
+  wins: PlayerRankingStats[];
+  goals: PlayerRankingStats[];
+  assists: PlayerRankingStats[];
+  cleanSheets: PlayerRankingStats[];
+}
+
+export interface MonthlyChampion {
+  id: string;
+  month_key: string; 
+  category: string;
+  player_id: string;
+  stat_value: number;
+  player?: Player; 
+}

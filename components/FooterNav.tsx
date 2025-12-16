@@ -20,7 +20,7 @@ const FooterNav: React.FC<FooterNavProps> = ({ currentTab, onTabChange, isAdmin 
         </button>
 
         <button 
-          onClick={() => onTabChange('career')} // <--- Linkado aqui
+          onClick={() => onTabChange('career')}
           className={`flex flex-col items-center justify-center w-16 h-full space-y-1 transition-colors ${currentTab === 'career' ? 'text-yellow-500' : 'text-slate-500 hover:text-slate-300'}`}
           title="Carreira"
         >
@@ -28,10 +28,11 @@ const FooterNav: React.FC<FooterNavProps> = ({ currentTab, onTabChange, isAdmin 
         </button>
 
         <button 
-          className="flex flex-col items-center justify-center w-16 h-full space-y-1 text-slate-600 cursor-not-allowed"
-          title="Em breve"
+          onClick={() => onTabChange('rankings')} // <--- Link Ativado
+          className={`flex flex-col items-center justify-center w-16 h-full space-y-1 transition-colors ${currentTab === 'rankings' ? 'text-yellow-500' : 'text-slate-500 hover:text-slate-300'}`}
+          title="Rankings"
         >
-          <Trophy size={24} />
+          <Trophy size={24} strokeWidth={currentTab === 'rankings' ? 2.5 : 2} />
         </button>
 
         {isAdmin && (
