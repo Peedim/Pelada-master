@@ -52,6 +52,7 @@ export interface Player {
   accumulators: PlayerAccumulators;
   monthly_delta: number;
   ovr_history: OvrHistoryEntry[];
+  featured_achievement_id?: string;
 }
 
 export interface PlayerFormData extends Omit<Player, 'id' | 'created_at' | 'attributes' | 'accumulators' | 'monthly_delta' | 'ovr_history'>, PlayerAttributes {}
@@ -149,29 +150,4 @@ export interface MonthlyChampion {
   player_id: string;
   stat_value: number;
   player?: Player; // Para o join ao exibir
-}
-
-// --- NOVAS INTERFACES PARA RANKING ---
-export interface PlayerRankingStats {
-  playerId: string;
-  playerName: string;
-  playerPhoto?: string;
-  position: string; 
-  value: number;
-}
-
-export interface RankingsData {
-  wins: PlayerRankingStats[];
-  goals: PlayerRankingStats[];
-  assists: PlayerRankingStats[];
-  cleanSheets: PlayerRankingStats[];
-}
-
-export interface MonthlyChampion {
-  id: string;
-  month_key: string; 
-  category: string;
-  player_id: string;
-  stat_value: number;
-  player?: Player; 
 }

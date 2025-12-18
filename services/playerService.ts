@@ -84,6 +84,30 @@ export const playerService = {
     return { ...data, playStyle: data.play_style, attributes: { pace, shooting, passing, defending }, accumulators: { pace: data.pace_acc, shooting: data.shooting_acc, passing: data.passing_acc, defending: data.defending_acc } };
   },
 
+updateFeaturedAchievement: async (playerId: string, achievementId: string) => {
+    const { error } = await supabase
+      .from('players')
+      .update({ featured_achievement_id: achievementId })
+      .eq('id', playerId);
+      
+    if (error) throw error;
+  },
+  
+  getManualAchievements: async (playerId: string): Promise<string[]> => {
+    const { data, error } = await supabase
+      .from('manual_achievements')
+      .select('achievement_id')
+      .eq('player_id', playerId);
+      
+    if (error) {
+      console.error('Erro ao buscar conquistas manuais:', error);
+      return [];
+    }
+    
+    // Retorna apenas um array de strings: ['special_founder', 'resenha_bagre']
+    return data.map((item: any) => item.achievement_id);
+  },
+
   updatePlayerDeltas: async () => {},
 
   processMonthlyUpdate: async (): Promise<string> => {

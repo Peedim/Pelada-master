@@ -48,7 +48,7 @@ const Rankings: React.FC<RankingsProps> = ({ players }) => {
   // Ícones e Títulos por Categoria
   const getCategoryInfo = (cat: string) => {
       switch(cat) {
-          case 'wins': return { label: 'Rei das Vitórias', icon: Trophy, color: 'text-yellow-400' };
+          case 'wins': return { label: 'MVP', icon: Trophy, color: 'text-yellow-400' };
           case 'goals': return { label: 'Artilheiro', icon: Flame, color: 'text-emerald-400' };
           case 'assists': return { label: 'Garçom', icon: Medal, color: 'text-cyan-400' };
           case 'clean_sheets': return { label: 'Muralha', icon: Shield, color: 'text-blue-400' };
@@ -188,10 +188,10 @@ const Rankings: React.FC<RankingsProps> = ({ players }) => {
       {/* CONTEÚDO MENSAL & GERAL */}
       {(activeTab === 'monthly' || activeTab === 'allTime') && currentData && (
         <div className="space-y-6">
-          <RankingCard title="Reis da Vitória" icon={Trophy} data={currentData.wins} />
+          <RankingCard title="MVP" icon={Trophy} data={currentData.wins} />
           <RankingCard title="Artilharia Pesada" icon={Flame} data={currentData.goals} />
-          <RankingCard title="Garçons (Assistências)" icon={Medal} data={currentData.assists} />
-          <RankingCard title="Muralhas (Clean Sheets)" icon={Shield} data={currentData.cleanSheets} />
+          <RankingCard title="Garçom" icon={Medal} data={currentData.assists} />
+          <RankingCard title="Muralha" icon={Shield} data={currentData.cleanSheets} />
         </div>
       )}
 

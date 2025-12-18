@@ -3,6 +3,8 @@ import { Player, Match, MatchStatus, PlayerFormData } from '../types';
 import { playerService, calculateWeightedOvr } from '../services/playerService';
 import { matchService } from '../services/matchService'; 
 import { Zap, TrendingUp, User, Camera, Upload, X, Loader2, Trash2, Check, RefreshCw, ChevronsUp, ChevronsDown, Minus, AlertTriangle } from 'lucide-react';
+import { ACHIEVEMENTS_LIST } from '../data/achievements';
+import { Trophy, Shield, Target, Crown, Medal, Star, Flame, Activity } from 'lucide-react';
 
 const getNameSizeClass = (name: string) => {
     const length = name.length;
@@ -33,11 +35,14 @@ const Home: React.FC<HomeProps> = ({ player, matches, onPlayerUpdate }) => {
   const [isDeletePhotoConfirmOpen, setIsDeletePhotoConfirmOpen] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   
-  // --- LÓGICA DA SETA ATUALIZADA (PREVISÃO DE VIRADA) ---
+  // LÓGICA DA CONQUISTA EQUIPADA
+  const featuredAchievement = player.featured_achievement_id 
+    ? ACHIEVEMENTS_LIST.find(a => a.id === player.featured_achievement_id)
+    : null;
+  
   const arrowIndicator = useMemo(() => {
       const { pace, shooting, passing, defending } = player.attributes;
       
-      // Simula o cálculo da Virada (Divide por 4 e Arredonda)
       const gainPace = Math.round(player.accumulators.pace / 4);
       const gainShoot = Math.round(player.accumulators.shooting / 4);
       const gainPass = Math.round(player.accumulators.passing / 4);
@@ -48,7 +53,6 @@ const Home: React.FC<HomeProps> = ({ player, matches, onPlayerUpdate }) => {
       let pPass = Math.max(1, Math.min(99, passing + gainPass));
       let pDef = Math.max(1, Math.min(99, defending + gainDef));
 
-      // Usa a nova função ponderada importada
       const futureOvrRaw = calculateWeightedOvr(player.position as string, { pace: pPace, shooting: pShoot, passing: pPass, defending: pDef });
       const futureOvr = Math.round(futureOvrRaw);
       
@@ -56,7 +60,6 @@ const Home: React.FC<HomeProps> = ({ player, matches, onPlayerUpdate }) => {
       
       if (diff > 0) return { icon: ChevronsUp, color: "text-emerald-400", show: true };
       if (diff < 0) return { icon: ChevronsDown, color: "text-red-500", show: true };
-      // Se não mudou (diff === 0), retorna show: false para não exibir nada
       return { icon: null, color: "", show: false }; 
   }, [player]);
 
@@ -178,7 +181,6 @@ const Home: React.FC<HomeProps> = ({ player, matches, onPlayerUpdate }) => {
                        <span className="text-[3.5rem] font-black text-white tracking-tighter drop-shadow-2xl block -ml-1">
                            {player.initial_ovr}
                        </span>
-                       {/* Renderização Condicional da Seta: Só exibe se show=true */}
                        {arrowIndicator.show && FormIcon && (
                            <FormIcon size={30} className={`absolute top-4 -right-8 ${formColor} drop-shadow-lg animate-pulse`} strokeWidth={3} />
                        )}
@@ -198,6 +200,29 @@ const Home: React.FC<HomeProps> = ({ player, matches, onPlayerUpdate }) => {
                       {player.playStyle}
                   </span>
               </div>
+
+              {/* --- CONQUISTA OSTENTADA (Lado Esquerdo, sem moldura) --- */}
+              {featuredAchievement && (
+                <div className="mt-4" title={`Ostentando: ${featuredAchievement.title}`}>
+                    {featuredAchievement.imageUrl ? (
+                        <img 
+                          src={featuredAchievement.imageUrl} 
+                          alt={featuredAchievement.title} 
+                          className="w-10 h-10 object-contain drop-shadow-md" 
+                        />
+                    ) : (
+                        <featuredAchievement.icon 
+                          size={36} 
+                          className={
+                            featuredAchievement.level === 'Elite' ? "text-yellow-400 drop-shadow-[0_0_8px_rgba(250,204,21,0.8)] filter" : 
+                            featuredAchievement.level === 'Esmeralda' ? "text-emerald-400 drop-shadow-[0_0_8px_rgba(52,211,153,0.6)] filter" : 
+                            featuredAchievement.level === 'Prata' ? "text-white drop-shadow-[0_0_5px_rgba(255,255,255,0.5)] filter" : 
+                            "text-amber-600 drop-shadow-sm filter"
+                          } 
+                        />
+                    )}
+                </div>
+              )}
           </div>
 
           <div className="col-span-3 relative h-full flex items-end justify-center cursor-pointer group" onClick={() => setIsEditingPhoto(true)}>
@@ -236,7 +261,6 @@ const Home: React.FC<HomeProps> = ({ player, matches, onPlayerUpdate }) => {
         </div>
       </div>
       
-      {/* Modals mantidos (omitido para brevidade) */}
       {isEditingPhoto && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
               <div className="bg-slate-800 border border-slate-700 rounded-xl shadow-2xl w-full max-w-sm p-6 relative">

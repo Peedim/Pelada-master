@@ -11,18 +11,19 @@ import FooterNav from './components/FooterNav';
 import Home from './components/Home';
 import Login from './components/Login';
 import Career from './components/Career';
-import Rankings from './components/Rankings'; // <--- IMPORTADO
+import Rankings from './components/Rankings'; 
 import { Player, PlayerFormData, Match, MatchStatus } from './types';
 import { playerService } from './services/playerService';
 import { matchService } from './services/matchService';
 import { supabase } from './services/supabaseClient';
 import { LayoutDashboard, Shuffle, FolderOpen, History, Bell, LogOut } from 'lucide-react';
-import AuthGuard from './components/AuthGuard'; // <--- Importe o novo componente
+import AuthGuard from './components/AuthGuard'; 
+import Achievements from './components/Achievements'; 
 
 type AdminView = 'dashboard' | 'create' | 'edit' | 'sorter' | 'drafts' | 'draft-editor' | 'active-match' | 'history';
 
 // TIPO ATUALIZADO
-type MainTab = 'home' | 'career' | 'rankings' | 'admin'; 
+type MainTab = 'home' | 'career' | 'rankings' | 'achievements' | 'admin';
 
 const App: React.FC = () => {
   const [mainTab, setMainTab] = useState<MainTab>('home');
@@ -140,6 +141,9 @@ const App: React.FC = () => {
         
         {/* RENDERIZAÇÃO DA TELA DE RANKINGS */}
         {mainTab === 'rankings' && <Rankings players={players} />}
+        {mainTab === 'achievements' && currentUser && (
+    <Achievements player={currentUser} />
+)}
         
         {mainTab === 'home' && !currentUser && <div className="flex flex-col items-center justify-center pt-20 text-slate-500"><p>Usuário não identificado.</p></div>}
         {mainTab === 'admin' && (
