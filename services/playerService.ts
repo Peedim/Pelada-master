@@ -1,7 +1,14 @@
 import { supabase } from './supabaseClient';
 import { Player, PlayerFormData, PlayerPosition } from '../types';
 
-// [CHECKPOINT V5] Tabela Mestra de Pesos
+export interface PlayerUpdateSimulation {
+  player: Player;
+  oldOvr: number;
+  newOvr: number;
+  delta: number;
+  changes: { pace: number; shooting: number; passing: number; defending: number };
+}
+// Tabela Mestra de Pesos
 // Define quanto cada atributo impacta no OVR e na distribuição de bônus
 export const OVR_WEIGHTS = {
   [PlayerPosition.GOLEIRO]:    { pace: 0.20, shooting: 0.05, passing: 0.15, defending: 0.60 },
@@ -123,5 +130,65 @@ export const playerService = {
           }).eq('id', p.id);
       }
       return `Virada de mês concluída! ${count} jogadores atualizaram o OVR.`;
+  },
+  simulateMonthlyUpdate: async (): Promise<PlayerUpdateSimulation[]> => {
+      const { data: players } = await supabase.from('players').select('*');
+      if (!players) return [];
+
+      const simulation: PlayerUpdateSimulation[] = players.map((p: any) => {
+          // Lógica de cálculo (mantida a mesma)
+          let newPace = Math.round(p.pace + (Number(p.pace_acc || 0) / 4));
+          let newShoot = Math.round(p.shooting + (Number(p.shooting_acc || 0) / 4));
+          let newPass = Math.round(p.passing + (Number(p.passing_acc || 0) / 4));
+          let newDef = Math.round(p.defending + (Number(p.defending_acc || 0) / 4));
+
+          // Limites 1-99
+          newPace = Math.max(1, Math.min(99, newPace));
+          newShoot = Math.max(1, Math.min(99, newShoot));
+          newPass = Math.max(1, Math.min(99, newPass));
+          newDef = Math.max(1, Math.min(99, newDef));
+
+          const rawNewOvr = calculateWeightedOvr(p.position, { pace: newPace, shooting: newShoot, passing: newPass, defending: newDef });
+          let finalOvr = Math.round(rawNewOvr);
+          const currentOvr = p.initial_ovr;
+          
+          // Trava de segurança (+/- 2 de OVR máximo por mês)
+          const diff = finalOvr - currentOvr;
+          if (diff > 2) finalOvr = currentOvr + 2;
+          if (diff < -2) finalOvr = currentOvr - 2;
+
+          return {
+              player: { ...p, id: p.id, name: p.name }, // Mapeamento básico necessário
+              oldOvr: currentOvr,
+              newOvr: finalOvr,
+              delta: finalOvr - currentOvr,
+              changes: { pace: newPace, shooting: newShoot, passing: newPass, defending: newDef }
+          };
+      });
+
+      // Retorna apenas quem teve mudança ou tem acumuladores pendentes
+      return simulation.filter(s => s.delta !== 0 || s.changes.pace !== s.player.attributes?.pace);
+  },
+
+  // 2. APLICA as mudanças no banco
+  commitMonthlyUpdate: async (simulation: PlayerUpdateSimulation[]): Promise<void> => {
+      for (const sim of simulation) {
+          const history = sim.player.ovr_history || [];
+          // Só adiciona histórico se o OVR mudou
+          if (sim.newOvr !== sim.oldOvr) {
+              history.push({ date: new Date().toISOString(), ovr: sim.newOvr });
+          }
+
+          await supabase.from('players').update({
+              pace: sim.changes.pace,
+              shooting: sim.changes.shooting,
+              passing: sim.changes.passing,
+              defending: sim.changes.defending,
+              initial_ovr: sim.newOvr,
+              pace_acc: 0, shooting_acc: 0, passing_acc: 0, defending_acc: 0, // Zera acumuladores
+              monthly_delta: 0,
+              ovr_history: history
+          }).eq('id', sim.player.id);
+      }
   }
 };

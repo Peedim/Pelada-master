@@ -1,7 +1,7 @@
-
 import React, { useMemo, useState } from 'react';
 import { Player, PlayerPosition } from '../types';
-import { playerService } from '../services/playerService';
+import { playerService, PlayerUpdateSimulation } from '../services/playerService';
+import MonthlyEvolutionPreview from './MonthlyEvolutionPreview';
 import { Search, UserPlus, Users, Shield, List, Zap, CalendarClock } from 'lucide-react';
 
 interface PlayerDashboardProps {
@@ -13,6 +13,8 @@ interface PlayerDashboardProps {
 const PlayerDashboard: React.FC<PlayerDashboardProps> = ({ players, onAddPlayer, onEditPlayer }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [isProcessingMonth, setIsProcessingMonth] = useState(false);
+  const [simulationData, setSimulationData] = useState<PlayerUpdateSimulation[] | null>(null);
+  const [isSimulating, setIsSimulating] = useState(false);
 
   // Stats Calculations
   const stats = useMemo(() => {
@@ -26,35 +28,40 @@ const PlayerDashboard: React.FC<PlayerDashboardProps> = ({ players, onAddPlayer,
     return { total, avgOvr, goalkeepers, attackers };
   }, [players]);
 
-  // Filtering (Removed Sorting UI to match the clean reference image, but keeping logic implies default sort)
   const filteredPlayers = useMemo(() => {
     return players.filter(p => 
       p.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
       p.email.toLowerCase().includes(searchTerm.toLowerCase())
-    ).sort((a, b) => b.initial_ovr - a.initial_ovr); // Default sort by OVR desc
+    ).sort((a, b) => b.initial_ovr - a.initial_ovr);
   }, [players, searchTerm]);
 
   const getInitials = (name: string) => {
-    return name
-      .split(' ')
-      .map(n => n[0])
-      .slice(0, 1) // Reference shows 1 letter usually, but 2 is fine. Let's stick to 1-2 chars.
-      .join('')
-      .toUpperCase();
+    return name.split(' ').map(n => n[0]).slice(0, 1).join('').toUpperCase();
   };
 
-  const handleMonthlyUpdate = async () => {
-      const confirmed = window.confirm("ATENÇÃO: Isso irá aplicar as mudanças de OVR acumuladas no mês para TODOS os jogadores. Deseja continuar?");
-      if (!confirmed) return;
-
-      setIsProcessingMonth(true);
+  const handleMonthlyUpdateClick = async () => {
+      setIsSimulating(true);
       try {
-          const result = await playerService.processMonthlyUpdate();
-          alert(result);
-          window.location.reload(); // Force reload to show new stats
+          const sim = await playerService.simulateMonthlyUpdate();
+          setSimulationData(sim);
       } catch (error) {
           console.error(error);
-          alert("Erro ao processar virada de mês.");
+          alert("Erro ao simular atualização.");
+      } finally {
+          setIsSimulating(false);
+      }
+  };
+
+  const confirmMonthlyUpdate = async () => {
+      if (!simulationData) return;
+      setIsProcessingMonth(true);
+      try {
+          await playerService.commitMonthlyUpdate(simulationData);
+          setSimulationData(null); 
+          window.location.reload(); 
+      } catch (error) {
+          console.error(error);
+          alert("Erro ao aplicar atualização.");
       } finally {
           setIsProcessingMonth(false);
       }
@@ -74,12 +81,12 @@ const PlayerDashboard: React.FC<PlayerDashboardProps> = ({ players, onAddPlayer,
         </div>
         <div className="flex gap-2">
             <button 
-                onClick={handleMonthlyUpdate}
-                disabled={isProcessingMonth}
+                onClick={handleMonthlyUpdateClick}
+                disabled={isSimulating || isProcessingMonth}
                 className="bg-slate-800 hover:bg-slate-700 text-white p-3 rounded-lg shadow-lg border border-slate-700 transition-all active:scale-95 disabled:opacity-50"
                 title="Virada de Mês (Atualizar OVR)"
             >
-                <CalendarClock size={24} className={isProcessingMonth ? 'animate-spin' : 'text-yellow-500'} />
+                <CalendarClock size={24} className={isSimulating ? 'animate-spin text-blue-400' : 'text-yellow-500'} />
             </button>
             <button 
             onClick={onAddPlayer}
@@ -106,25 +113,18 @@ const PlayerDashboard: React.FC<PlayerDashboardProps> = ({ players, onAddPlayer,
 
       {/* Stats Grid (4 Cols) */}
       <div className="grid grid-cols-4 gap-3 mb-8">
-        {/* Total */}
         <div className="bg-slate-800 rounded-xl p-3 flex flex-col items-center justify-center border border-slate-700/50">
           <span className="text-xl font-bold text-cyan-400">{stats.total}</span>
           <span className="text-[10px] font-bold text-slate-500 mt-1 uppercase">TOTAL</span>
         </div>
-        
-        {/* Média */}
         <div className="bg-slate-800 rounded-xl p-3 flex flex-col items-center justify-center border border-slate-700/50">
           <span className="text-xl font-bold text-emerald-400">{stats.avgOvr}</span>
           <span className="text-[10px] font-bold text-slate-500 mt-1 uppercase">MÉDIA</span>
         </div>
-
-        {/* Goleiros (GOL) */}
         <div className="bg-slate-800 rounded-xl p-3 flex flex-col items-center justify-center border border-slate-700/50">
           <span className="text-xl font-bold text-yellow-400">{stats.goalkeepers}</span>
           <span className="text-[10px] font-bold text-slate-500 mt-1 uppercase">GOL</span>
         </div>
-
-        {/* Atacantes (ATA) */}
         <div className="bg-slate-800 rounded-xl p-3 flex flex-col items-center justify-center border border-slate-700/50">
           <span className="text-xl font-bold text-red-400">{stats.attackers}</span>
           <span className="text-[10px] font-bold text-slate-500 mt-1 uppercase">ATA</span>
@@ -151,7 +151,6 @@ const PlayerDashboard: React.FC<PlayerDashboardProps> = ({ players, onAddPlayer,
                 className="bg-slate-800 rounded-xl p-4 flex items-center justify-between border border-slate-700/50 hover:bg-slate-700/50 transition-colors cursor-pointer group shadow-sm"
               >
                 <div className="flex items-center gap-4">
-                  {/* Avatar */}
                   <div className="w-12 h-12 rounded-full bg-blue-500 flex items-center justify-center text-white font-bold text-lg shadow-md shrink-0">
                     {player.photo_url ? (
                         <img src={player.photo_url} alt={player.name} className="w-full h-full object-contain" />
@@ -160,7 +159,6 @@ const PlayerDashboard: React.FC<PlayerDashboardProps> = ({ players, onAddPlayer,
                     )}
                   </div>
                   
-                  {/* Info */}
                   <div>
                     <div className="flex items-center gap-2">
                       <span className="font-bold text-white text-base">{player.name}</span>
@@ -181,7 +179,6 @@ const PlayerDashboard: React.FC<PlayerDashboardProps> = ({ players, onAddPlayer,
                   </div>
                 </div>
 
-                {/* Right Side - OVR */}
                 <div className="text-center min-w-[3rem]">
                    <span className="block text-xl font-bold text-cyan-400 group-hover:text-cyan-300 transition-colors">
                      {player.initial_ovr}
@@ -195,6 +192,15 @@ const PlayerDashboard: React.FC<PlayerDashboardProps> = ({ players, onAddPlayer,
           )}
         </div>
       </div>
+
+      {simulationData && (
+        <MonthlyEvolutionPreview 
+          simulation={simulationData}
+          onConfirm={confirmMonthlyUpdate}
+          onCancel={() => setSimulationData(null)}
+          isSaving={isProcessingMonth}
+        />
+      )}
 
     </div>
   );

@@ -17,6 +17,7 @@ import { playerService } from './services/playerService';
 import { matchService } from './services/matchService';
 import { supabase } from './services/supabaseClient';
 import { LayoutDashboard, Shuffle, FolderOpen, History, Bell, LogOut } from 'lucide-react';
+import AuthGuard from './components/AuthGuard'; // <--- Importe o novo componente
 
 type AdminView = 'dashboard' | 'create' | 'edit' | 'sorter' | 'drafts' | 'draft-editor' | 'active-match' | 'history';
 
@@ -142,15 +143,17 @@ const App: React.FC = () => {
         
         {mainTab === 'home' && !currentUser && <div className="flex flex-col items-center justify-center pt-20 text-slate-500"><p>Usuário não identificado.</p></div>}
         {mainTab === 'admin' && (
-          <div className="px-4 sm:px-6 lg:px-8 pb-20">
-            {adminView === 'dashboard' && <PlayerDashboard players={players} onAddPlayer={handleAddPlayerClick} onEditPlayer={handleEditPlayerClick} />}
-            {(adminView === 'create' || adminView === 'edit') && <PlayerForm initialData={selectedPlayer} onSubmit={handleFormSubmit} onCancel={handleCancel} isLoading={actionLoading} />}
-            {adminView === 'sorter' && <TeamSorter players={players} onDraftSaved={handleDraftSaved} />}
-            {adminView === 'drafts' && <DraftList onSelectMatch={handleSelectMatch} />}
-            {adminView === 'draft-editor' && selectedDraftId && <DraftEditor matchId={selectedDraftId} onBack={() => setAdminView('drafts')} onPublish={handlePublishMatch} isLoading={actionLoading} />}
-            {adminView === 'active-match' && activeMatchId && <ActiveMatchDashboard matchId={activeMatchId} onBack={() => setAdminView(previousAdminView)} onMatchUpdate={refreshData} />}
-            {adminView === 'history' && <MatchHistory onSelectMatch={handleSelectHistoryMatch} />}
-          </div>
+          <AuthGuard isAdminRoute={true} currentUserAdmin={isAdmin}>
+            <div className="px-4 sm:px-6 lg:px-8 pb-20">
+              {adminView === 'dashboard' && <PlayerDashboard players={players} onAddPlayer={handleAddPlayerClick} onEditPlayer={handleEditPlayerClick} />}
+              {(adminView === 'create' || adminView === 'edit') && <PlayerForm initialData={selectedPlayer} onSubmit={handleFormSubmit} onCancel={handleCancel} isLoading={actionLoading} />}
+              {adminView === 'sorter' && <TeamSorter players={players} onDraftSaved={handleDraftSaved} />}
+              {adminView === 'drafts' && <DraftList onSelectMatch={handleSelectMatch} />}
+              {adminView === 'draft-editor' && selectedDraftId && <DraftEditor matchId={selectedDraftId} onBack={() => setAdminView('drafts')} onPublish={handlePublishMatch} isLoading={actionLoading} />}
+              {adminView === 'active-match' && activeMatchId && <ActiveMatchDashboard matchId={activeMatchId} onBack={() => setAdminView(previousAdminView)} onMatchUpdate={refreshData} />}
+              {adminView === 'history' && <MatchHistory onSelectMatch={handleSelectHistoryMatch} />}
+            </div>
+          </AuthGuard>
         )}
       </main>
       
