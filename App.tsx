@@ -16,9 +16,10 @@ import { Player, PlayerFormData, Match, MatchStatus } from './types';
 import { playerService } from './services/playerService';
 import { matchService } from './services/matchService';
 import { supabase } from './services/supabaseClient';
-import { LayoutDashboard, Shuffle, FolderOpen, History, Bell, LogOut } from 'lucide-react';
+import { LayoutDashboard, Shuffle, FolderOpen, History, LogOut } from 'lucide-react'; // Removi Bell daqui pois será usado dentro do componente
 import AuthGuard from './components/AuthGuard'; 
-import Achievements from './components/Achievements'; 
+import Achievements from './components/Achievements';
+import NotificationBell from './components/NotificationBell'; 
 
 type AdminView = 'dashboard' | 'create' | 'edit' | 'sorter' | 'drafts' | 'draft-editor' | 'active-match' | 'history';
 
@@ -128,8 +129,18 @@ const App: React.FC = () => {
                 <button onClick={() => setAdminView('history')} className={`p-1.5 rounded-md transition-all ${adminView === 'history' ? 'bg-slate-700 text-white' : 'text-slate-400'}`} title="Histórico"><History size={20} /></button>
               </nav>
             )}
+            
             {mainTab === 'admin' && <DataExport />}
-            {mainTab === 'home' && (<button className="relative p-2 text-slate-400 hover:text-white"><Bell size={24} /><span className="absolute top-2 right-2 w-2 h-2 bg-red-500 rounded-full"></span></button>)}
+            
+            {/* --- AQUI ENTRA O SINO NOVO --- */}
+            {/* O sino aparece SEMPRE para o usuário logado (currentUser), não só na Home */}
+            {currentUser && (
+               <NotificationBell 
+                  currentUser={currentUser} 
+                  onNavigate={(tab) => setMainTab(tab as MainTab)} 
+               />
+            )}
+            
             <button onClick={handleLogout} className="p-2 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-full transition-colors" title="Sair"><LogOut size={20} /></button>
           </div>
         </div>
@@ -142,8 +153,8 @@ const App: React.FC = () => {
         {/* RENDERIZAÇÃO DA TELA DE RANKINGS */}
         {mainTab === 'rankings' && <Rankings players={players} />}
         {mainTab === 'achievements' && currentUser && (
-    <Achievements player={currentUser} />
-)}
+          <Achievements player={currentUser} />
+        )}
         
         {mainTab === 'home' && !currentUser && <div className="flex flex-col items-center justify-center pt-20 text-slate-500"><p>Usuário não identificado.</p></div>}
         {mainTab === 'admin' && (
