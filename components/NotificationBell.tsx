@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Bell, X, Trophy, Calendar, CheckCircle2 } from 'lucide-react';
-import { Player, Match } from '../types';
+import { Bell, Trophy, Calendar } from 'lucide-react'; // Removi X, CheckCircle2 pois não estavam sendo usados no visual atual
+import { Player } from '../types';
 import { matchService } from '../services/matchService';
 import { rankingService } from '../services/rankingService';
 import { playerService } from '../services/playerService';
@@ -13,7 +13,7 @@ interface Notification {
   message: string;
   timestamp: number;
   read: boolean;
-  actionTab: string; // Para onde redirecionar ('achievements' | 'career')
+  actionTab: string;
 }
 
 interface NotificationBellProps {
@@ -27,7 +27,6 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ currentUser, onNavi
   const [unreadCount, setUnreadCount] = useState(0);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
-  // Fecha o dropdown se clicar fora
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
@@ -38,38 +37,29 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ currentUser, onNavi
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // --- LÓGICA DE VERIFICAÇÃO ---
-  useEffect(() => {
-    checkNewNotifications();
-  }, [currentUser]);
+  useEffect(() => { checkNewNotifications(); }, [currentUser]);
 
   const checkNewNotifications = async () => {
     try {
-      // 1. Carregar Dados Reais
       const [matches, hall, manualUnlocks] = await Promise.all([
         matchService.getAll(),
         rankingService.getHallOfFame(),
         playerService.getManualAchievements(currentUser.id)
       ]);
 
-      // 2. Carregar Estado Local (O que o usuário "já sabe")
       const storedData = localStorage.getItem(`pelada_user_data_${currentUser.id}`);
       const knownData = storedData ? JSON.parse(storedData) : { achievementIds: [], lastMatchId: '' };
       
       const savedNotifs = localStorage.getItem(`pelada_notifications_${currentUser.id}`);
       let currentNotifications: Notification[] = savedNotifs ? JSON.parse(savedNotifs) : [];
 
-      // --- VERIFICAR CONQUISTAS NOVAS ---
       const stats = calculatePlayerStats(currentUser.id, matches, hall);
       const currentUnlockedIds: string[] = [];
       const newAchievements: Notification[] = [];
 
       ACHIEVEMENTS_LIST.forEach(achiev => {
-        // Verifica se desbloqueou (Auto ou Manual)
         if (achiev.condition(stats) || manualUnlocks.includes(achiev.id)) {
           currentUnlockedIds.push(achiev.id);
-
-          // Se NÃO estava na lista de conhecidos, é nova!
           if (!knownData.achievementIds.includes(achiev.id)) {
             newAchievements.push({
               id: `notif_achiev_${achiev.id}_${Date.now()}`,
@@ -84,8 +74,6 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ currentUser, onNavi
         }
       });
 
-      // --- VERIFICAR EVENTO ENCERRADO ---
-      // Pega o último evento finalizado
       const lastFinishedMatch = matches
         .filter(m => m.status === 'FINISHED')
         .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
@@ -99,42 +87,28 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ currentUser, onNavi
              message: 'O último evento foi finalizado. Confira a súmula e sua evolução!',
              timestamp: Date.now(),
              read: false,
-             actionTab: 'career' // ou home
+             actionTab: 'career'
          });
-         // Atualiza o ID conhecido para não notificar de novo
          knownData.lastMatchId = lastFinishedMatch.id;
       }
 
-      // --- ATUALIZAR ESTADO E STORAGE ---
       if (newAchievements.length > 0 || newEvents.length > 0) {
         const updatedNotifications = [...newEvents, ...newAchievements, ...currentNotifications];
-        // Limita a 10 notificações para não poluir
         const trimmedNotifications = updatedNotifications.slice(0, 10);
-        
         setNotifications(trimmedNotifications);
         setUnreadCount(trimmedNotifications.filter(n => !n.read).length);
-        
-        // Salva notificações
         localStorage.setItem(`pelada_notifications_${currentUser.id}`, JSON.stringify(trimmedNotifications));
-        
-        // Salva estado de conhecimento
         knownData.achievementIds = currentUnlockedIds;
         localStorage.setItem(`pelada_user_data_${currentUser.id}`, JSON.stringify(knownData));
       } else {
-        // Se não tem nada novo, só carrega as antigas
         setNotifications(currentNotifications);
         setUnreadCount(currentNotifications.filter(n => !n.read).length);
-        
-        // Atualiza a lista de IDs conhecidos mesmo sem notificações novas (para sincronizar)
         if (JSON.stringify(knownData.achievementIds) !== JSON.stringify(currentUnlockedIds)) {
             knownData.achievementIds = currentUnlockedIds;
             localStorage.setItem(`pelada_user_data_${currentUser.id}`, JSON.stringify(knownData));
         }
       }
-
-    } catch (error) {
-      console.error("Erro ao verificar notificações", error);
-    }
+    } catch (error) { console.error("Erro notificacoes", error); }
   };
 
   const markAllAsRead = () => {
@@ -145,13 +119,10 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ currentUser, onNavi
   };
 
   const handleNotificationClick = (notif: Notification) => {
-    // Marca como lida
     const updated = notifications.map(n => n.id === notif.id ? { ...n, read: true } : n);
     setNotifications(updated);
     setUnreadCount(updated.filter(n => !n.read).length);
     localStorage.setItem(`pelada_notifications_${currentUser.id}`, JSON.stringify(updated));
-
-    // Navega e fecha
     setIsOpen(false);
     onNavigate(notif.actionTab);
   };
@@ -165,7 +136,6 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ currentUser, onNavi
 
   return (
     <div className="relative" ref={dropdownRef}>
-      {/* Ícone do Sino */}
       <button 
         onClick={() => { setIsOpen(!isOpen); if (!isOpen) markAllAsRead(); }}
         className="p-2 relative hover:bg-slate-800 rounded-full transition-colors"
@@ -176,12 +146,14 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ currentUser, onNavi
         )}
       </button>
 
-      {/* Dropdown */}
       {isOpen && (
-        <div className="absolute top-full right-0 mt-2 w-80 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-hidden animate-fade-in origin-top-right">
+        // AQUI ESTÁ O AJUSTE DE POSIÇÃO (-right-10) E LARGURA (w-72)
+        <div className="absolute top-full -right-10 sm:right-0 mt-3 w-72 sm:w-80 bg-slate-800 border border-slate-700 rounded-xl shadow-2xl z-50 overflow-visible animate-fade-in origin-top-right">
           
-          {/* Header */}
-          <div className="flex items-center justify-between p-3 border-b border-slate-700 bg-slate-900/50">
+          {/* SETINHA (Triângulo) APONTANDO PARA O SINO */}
+          <div className="absolute -top-1.5 right-[3.3rem] sm:right-3 w-3 h-3 bg-slate-800 border-l border-t border-slate-700 transform rotate-45 z-50"></div>
+
+          <div className="flex items-center justify-between p-3 border-b border-slate-700 bg-slate-900/50 rounded-t-xl relative z-40">
              <h3 className="text-sm font-bold text-white">Notificações</h3>
              {notifications.length > 0 && (
                  <button onClick={clearNotifications} className="text-[10px] text-slate-400 hover:text-red-400 uppercase font-bold transition-colors">
@@ -190,8 +162,7 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ currentUser, onNavi
              )}
           </div>
 
-          {/* Lista */}
-          <div className="max-h-[300px] overflow-y-auto custom-scrollbar">
+          <div className="max-h-[300px] overflow-y-auto custom-scrollbar bg-slate-800 rounded-b-xl">
              {notifications.length === 0 ? (
                  <div className="p-8 text-center text-slate-500 flex flex-col items-center">
                      <Bell size={32} className="mb-2 opacity-20" />
@@ -205,12 +176,10 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ currentUser, onNavi
                             onClick={() => handleNotificationClick(notif)}
                             className={`p-3 flex gap-3 hover:bg-slate-700/50 cursor-pointer transition-colors ${!notif.read ? 'bg-emerald-500/5' : ''}`}
                          >
-                             {/* Ícone */}
                              <div className={`mt-1 min-w-[32px] h-8 rounded-full flex items-center justify-center border ${notif.type === 'achievement' ? 'bg-yellow-500/10 border-yellow-500/30 text-yellow-500' : 'bg-blue-500/10 border-blue-500/30 text-blue-500'}`}>
                                  {notif.type === 'achievement' ? <Trophy size={14} /> : <Calendar size={14} />}
                              </div>
                              
-                             {/* Texto */}
                              <div className="flex-1">
                                  <h4 className={`text-xs font-bold ${notif.read ? 'text-slate-300' : 'text-white'}`}>
                                      {notif.title}
