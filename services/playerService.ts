@@ -84,7 +84,7 @@ export const playerService = {
     return { ...data, playStyle: data.play_style, attributes: { pace, shooting, passing, defending }, accumulators: { pace: data.pace_acc, shooting: data.shooting_acc, passing: data.passing_acc, defending: data.defending_acc } };
   },
 
-updateFeaturedAchievement: async (playerId: string, achievementId: string) => {
+updateFeaturedAchievement: async (playerId: string, achievementId: string | null) => { // Aceita null
     const { error } = await supabase
       .from('players')
       .update({ featured_achievement_id: achievementId })

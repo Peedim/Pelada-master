@@ -4,7 +4,7 @@ import { ACHIEVEMENTS_LIST, calculatePlayerStats, PlayerStats } from '../data/ac
 import { matchService } from '../services/matchService';
 import { rankingService } from '../services/rankingService';
 import { playerService } from '../services/playerService';
-import { Lock, Unlock, BarChart3, ArrowUpDown, Filter, Check, X, Star } from 'lucide-react';
+import { Lock, Unlock, BarChart3, ArrowUpDown, Filter, Check, X, Star, Trash2, Ban } from 'lucide-react'; // Adicione Ban ou Trash2
 
 interface AchievementsProps {
   player: Player;
@@ -12,7 +12,7 @@ interface AchievementsProps {
 
 const Achievements: React.FC<AchievementsProps> = ({ player }) => {
   const [stats, setStats] = useState<PlayerStats | null>(null);
-  const [manualUnlocks, setManualUnlocks] = useState<string[]>([]); // <--- LISTA MANUAL
+  const [manualUnlocks, setManualUnlocks] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   
   const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
@@ -31,20 +31,25 @@ const Achievements: React.FC<AchievementsProps> = ({ player }) => {
       const [matches, hall, manualList] = await Promise.all([
         matchService.getAll(),
         rankingService.getHallOfFame(),
-        playerService.getManualAchievements(player.id) // <--- BUSCA AS MANUAIS
+        playerService.getManualAchievements(player.id)
       ]);
       const calculatedStats = calculatePlayerStats(player.id, matches, hall);
       setStats(calculatedStats);
-      setManualUnlocks(manualList); // <--- SALVA NO ESTADO
+      setManualUnlocks(manualList);
     } catch (error) { console.error(error); } finally { setLoading(false); }
   };
 
-  const handleEquipAchievement = async (achievId: string) => {
+  // Função genérica: Equipar (string) ou Remover (null)
+  const handleToggleAchievement = async (achievId: string, isEquipping: boolean) => {
       setIsSaving(true);
       try {
           if (!player.id) throw new Error("ID inválido");
-          await playerService.updateFeaturedAchievement(player.id, achievId);
-          setFeaturedId(achievId);
+          
+          const newValue = isEquipping ? achievId : null; // Se for equipar, manda ID. Se for remover, manda null.
+          
+          await playerService.updateFeaturedAchievement(player.id, newValue);
+          
+          setFeaturedId(newValue);
           setConfirmingId(null);
           setActiveTooltip(null);
       } catch (error: any) {
@@ -54,7 +59,6 @@ const Achievements: React.FC<AchievementsProps> = ({ player }) => {
       }
   };
 
-  // Helpers Visuais (Cores e Ícones)
   const getIconStyles = (level: string, isUnlocked: boolean) => {
     if (!isUnlocked) return "text-slate-700 drop-shadow-none"; 
     switch (level) {
@@ -91,27 +95,23 @@ const Achievements: React.FC<AchievementsProps> = ({ player }) => {
       const levelWeights: Record<string, number> = { 'Elite': 4, 'Esmeralda': 3, 'Prata': 2, 'Bronze': 1 };
       
       list.sort((a, b) => {
-          // Lógica especial: Conquistas manuais que o jogador TEM aparecem no topo se estiverem desbloqueadas
           const playerHasA = a.condition(stats) || manualUnlocks.includes(a.id);
           const playerHasB = b.condition(stats) || manualUnlocks.includes(b.id);
-          
           const weightA = levelWeights[a.level];
           const weightB = levelWeights[b.level];
-          
           if (weightA === weightB) return a.title.localeCompare(b.title);
           return sortOrder === 'desc' ? weightB - weightA : weightA - weightB;
       });
       return list;
-  }, [stats, selectedCategory, sortOrder, manualUnlocks]); // Adicionado manualUnlocks na dependência
+  }, [stats, selectedCategory, sortOrder, manualUnlocks]);
 
   if (loading || !stats) return <div className="flex justify-center py-20"><div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div></div>;
 
-  // Lógica Mista para Contagem
   const totalAchievements = ACHIEVEMENTS_LIST.length;
   const unlockedAchievements = ACHIEVEMENTS_LIST.filter(a => a.condition(stats) || manualUnlocks.includes(a.id)).length;
   const progressPercentage = Math.round((unlockedAchievements / totalAchievements) * 100) || 0;
   const eliteUnlocked = ACHIEVEMENTS_LIST.filter(a => a.level === 'Elite' && (a.condition(stats) || manualUnlocks.includes(a.id))).length;
-  const categories = ['Todos', 'Gols', 'Assistências', 'Defesa', 'Vitórias', 'Fidelidade', 'Especiais']; // + Especiais
+  const categories = ['Todos', 'Gols', 'Assistências', 'Defesa', 'Vitórias', 'Fidelidade', 'Especiais'];
 
   return (
     <div className="animate-fade-in pb-24 px-4 pt-6 max-w-lg mx-auto">
@@ -163,11 +163,8 @@ const Achievements: React.FC<AchievementsProps> = ({ player }) => {
 
       <div className="grid grid-cols-3 gap-3">
         {filteredAndSortedList.map((achiev, index) => {
-            // === MÁGICA AQUI: É desbloqueado se a condição for TRUE *OU* se estiver na lista manual
             const isManuallyUnlocked = manualUnlocks.includes(achiev.id);
             const isUnlocked = achiev.condition(stats) || isManuallyUnlocked;
-            
-            // Se for manual, o progresso é 100%. Se não, calcula.
             const progress = isManuallyUnlocked ? 100 : achiev.progress(stats);
             const Icon = achiev.icon;
             
@@ -204,11 +201,34 @@ const Achievements: React.FC<AchievementsProps> = ({ player }) => {
                         <div className="relative z-10 overflow-hidden rounded-xl">
                             {isConfirming ? (
                                 <div className="p-3 flex flex-col items-center bg-slate-900/95 backdrop-blur-md animate-fade-in text-center h-full">
-                                    <span className="text-xs font-bold text-white mb-1">Ostentar Conquista?</span>
-                                    <p className="text-[9px] text-slate-400 mb-3 leading-tight">Exibir este ícone no seu perfil da Home.</p>
+                                    {/* MUDANÇA DE UI: Se já estiver equipado, mostra opção de Remover */}
+                                    <span className="text-xs font-bold text-white mb-1">
+                                        {isEquipped ? "Remover Destaque?" : "Ostentar Conquista?"}
+                                    </span>
+                                    <p className="text-[9px] text-slate-400 mb-3 leading-tight">
+                                        {isEquipped 
+                                            ? "Retirar este ícone do seu perfil na Home." 
+                                            : "Exibir este ícone no seu perfil da Home."}
+                                    </p>
                                     <div className="flex gap-2 w-full">
                                         <button onClick={(e) => { e.stopPropagation(); setConfirmingId(null); }} className="flex-1 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded text-[10px] font-bold"><X size={12} className="mx-auto" /></button>
-                                        <button onClick={(e) => { e.stopPropagation(); handleEquipAchievement(achiev.id); }} disabled={isSaving} className="flex-1 py-1.5 bg-emerald-500 hover:bg-emerald-400 text-slate-900 rounded text-[10px] font-bold shadow-lg shadow-emerald-500/20">{isSaving ? '...' : <Check size={12} className="mx-auto" />}</button>
+                                        
+                                        {/* Botão Dinâmico: Confirmar (Verde) ou Remover (Vermelho) */}
+                                        <button 
+                                            onClick={(e) => { 
+                                                e.stopPropagation(); 
+                                                // Se já equipado, passa 'false' para desequipar. Se não, 'true' para equipar.
+                                                handleToggleAchievement(achiev.id, !isEquipped); 
+                                            }} 
+                                            disabled={isSaving} 
+                                            className={`flex-1 py-1.5 rounded text-[10px] font-bold shadow-lg transition-colors ${
+                                                isEquipped 
+                                                ? "bg-red-500 hover:bg-red-600 text-white shadow-red-500/20" 
+                                                : "bg-emerald-500 hover:bg-emerald-400 text-slate-900 shadow-emerald-500/20"
+                                            }`}
+                                        >
+                                            {isSaving ? '...' : (isEquipped ? <Ban size={12} className="mx-auto" /> : <Check size={12} className="mx-auto" />)}
+                                        </button>
                                     </div>
                                 </div>
                             ) : (
@@ -218,10 +238,9 @@ const Achievements: React.FC<AchievementsProps> = ({ player }) => {
                                     <p className="text-[10px] text-slate-400 mb-3 leading-snug">{achiev.description}</p>
                                     
                                     {isUnlocked ? (
-                                        isEquipped ? (<div className="text-[9px] text-yellow-500 font-bold flex items-center gap-1"><Star size={10} fill="currentColor" /> Ostentando Agora</div>) : (<div className="text-[9px] text-emerald-400 font-bold animate-pulse cursor-pointer">Toque para Ostentar</div>)
+                                        isEquipped ? (<div className="text-[9px] text-yellow-500 font-bold flex items-center gap-1 cursor-pointer animate-pulse"><Star size={10} fill="currentColor" /> Ostentando (Toque p/ tirar)</div>) : (<div className="text-[9px] text-emerald-400 font-bold animate-pulse cursor-pointer">Toque para Ostentar</div>)
                                     ) : (
                                         <div className="w-full">
-                                            {/* SE É MANUAL e BLOQUEADO: Mostra texto especial */}
                                             {achiev.category === 'Especiais' ? (
                                                 <span className="text-[9px] text-slate-500 italic">Desbloqueio Manual / Especial</span>
                                             ) : (
