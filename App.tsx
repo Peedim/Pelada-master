@@ -112,11 +112,25 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-slate-900 text-slate-100 font-sans selection:bg-green-500 selection:text-white">
       <div className="border-b border-slate-800 bg-slate-900/90 sticky top-0 z-40 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-          {mainTab === 'home' ? (
-             <div className="flex items-center gap-4"><div className="grid grid-cols-2 gap-1"><div className="w-2 h-2 rounded-full bg-white/80"></div><div className="w-2 h-2 rounded-full bg-white/80"></div><div className="w-2 h-2 rounded-full bg-white/80"></div><div className="w-2 h-2 rounded-full bg-white/80"></div></div></div>
-          ) : (
-             <div className="flex items-center gap-2 cursor-pointer" onClick={() => setAdminView('dashboard')}><div className="h-8 w-8 bg-cyan-600 rounded-lg flex items-center justify-center font-bold text-white shadow-lg shadow-cyan-500/30">P</div><span className="font-bold text-xl tracking-tight text-white hidden sm:block">Pelada Manager</span></div>
-          )}
+          <div 
+  className="flex items-center gap-3 cursor-pointer hover:opacity-90 transition-opacity" 
+  onClick={() => {
+    // Se estiver na Home, não faz nada ou recarrega. Se estiver em Admin, volta pro Dashboard.
+    if (mainTab !== 'home') setAdminView('dashboard');
+  }}
+>
+  {/* AQUI ESTÁ A LOGO - Substitua '/logo.png' pelo caminho real da sua imagem na pasta public */}
+  <img 
+    src="/logo2.webp" 
+    alt="Logo C13" 
+    className="h-10 w-10 object-contain drop-shadow-lg" 
+  />
+  
+  {/* Nome do App */}
+  <span className="font-bold text-xl tracking-tight text-white hidden sm:block">
+    C13 Manager
+  </span>
+</div>
           
           <div className="absolute left-1/2 transform -translate-x-1/2 font-bold text-white uppercase tracking-wider hidden xs:block">{mainTab === 'home' ? 'PELADA MANAGER' : ''}</div>
 

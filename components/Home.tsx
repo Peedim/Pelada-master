@@ -91,33 +91,73 @@ const Home: React.FC<HomeProps> = ({ player, matches, onPlayerUpdate }) => {
     return { gamesPlayed, goals, assists, titles, wins };
   }, [matches, player.id]);
 
+  // --- NOVA LÓGICA DO GRÁFICO (FIXO EM 2026) ---
   const chartData = useMemo(() => {
-    const startDate = player.created_at ? new Date(player.created_at) : new Date();
-    let points = [];
-    const startOvr = player.ovr_history && player.ovr_history.length > 0 ? player.ovr_history[0].ovr : player.initial_ovr;
-    points.push({ date: startDate, ovr: startOvr });
-    if (player.ovr_history) { player.ovr_history.forEach(h => { points.push({ date: new Date(h.date), ovr: h.ovr }); }); }
-    if (points.length === 1) { points.push({ date: new Date(), ovr: player.initial_ovr }); }
+    // Definição do Intervalo: Ano de 2026 Completo
+    const startYear = 2026;
+    const startTimestamp = new Date(startYear, 0, 1).getTime(); // 01 Jan 2026
+    const endTimestamp = new Date(startYear, 11, 31).getTime(); // 31 Dez 2026
+    const totalTime = endTimestamp - startTimestamp;
+
+    // Lista de Pontos
+    // 1. Começa sempre com o OVR Inicial em Jan 2026
+    let points = [{ date: new Date(startYear, 0, 1), ovr: player.initial_ovr }];
+
+    // 2. Adiciona histórico (se houver), garantindo ordem
+    if (player.ovr_history) {
+        player.ovr_history.forEach(h => {
+            points.push({ date: new Date(h.date), ovr: h.ovr });
+        });
+    }
+
+    // Ordena cronologicamente
     points.sort((a, b) => a.date.getTime() - b.date.getTime());
-    const width = 350; const height = 100; const padding = 10;
+
+    // Escala Y (OVR) com margem de segurança
     const ovrs = points.map(p => p.ovr);
-    const minOvr = Math.min(...ovrs) - 2; const maxOvr = Math.max(...ovrs) + 2; const rangeOvr = maxOvr - minOvr || 1;
-    const minTime = points[0].date.getTime(); const maxTime = points[points.length - 1].date.getTime(); const rangeTime = maxTime - minTime || 1;
+    const minOvr = Math.min(...ovrs) - 2; 
+    const maxOvr = Math.max(...ovrs) + 2; 
+    const rangeOvr = maxOvr - minOvr || 1;
+
+    // Dimensões do Gráfico
+    const width = 350; 
+    const height = 100; 
+    const padding = 10;
+    const graphWidth = width - 2 * padding;
+    const graphHeight = height - 2 * padding;
+
+    // Geração do Caminho (Path SVG)
     const pathD = points.map((p, i) => {
-        const x = ((p.date.getTime() - minTime) / rangeTime) * (width - 2 * padding) + padding;
-        const y = height - ((p.ovr - minOvr) / rangeOvr) * (height - 2 * padding) - padding;
+        // Clamp da Data: Garante que nada desenhe antes de Jan 2026 (esquerda)
+        let time = p.date.getTime();
+        if (time < startTimestamp) time = startTimestamp;
+        
+        // Posição X: Porcentagem do ano percorrido
+        const percentX = (time - startTimestamp) / totalTime;
+        
+        // Clamp X: Garante que não saia pela direita (máx 100%)
+        const clampedPercentX = Math.min(1, Math.max(0, percentX));
+        
+        const x = padding + (clampedPercentX * graphWidth);
+        const y = height - padding - ((p.ovr - minOvr) / rangeOvr) * graphHeight;
+        
         return `${i === 0 ? 'M' : 'L'} ${x},${y}`;
     }).join(' ');
+
+    // Posição da "Bolinha" final
     const lastPoint = points[points.length - 1];
-    const lastX = width - padding;
-    const lastY = height - ((lastPoint.ovr - minOvr) / rangeOvr) * (height - 2 * padding) - padding;
-    const displayLabels = points.map((p) => {
-         const month = p.date.toLocaleString('default', { month: 'short' });
-         const year = p.date.getFullYear().toString().slice(2);
-         return `${month} ${year}`;
-    });
-    const finalLabels = displayLabels.length > 6 ? displayLabels.filter((_, i) => i === 0 || i === displayLabels.length - 1 || i % Math.ceil(displayLabels.length / 5) === 0) : displayLabels;
-    return { pathD, lastX, lastY, displayLabels: finalLabels };
+    let lastTime = lastPoint.date.getTime();
+    if (lastTime < startTimestamp) lastTime = startTimestamp;
+    
+    const lastPercentX = Math.min(1, Math.max(0, (lastTime - startTimestamp) / totalTime));
+    const lastX = padding + (lastPercentX * graphWidth);
+    const lastY = height - padding - ((lastPoint.ovr - minOvr) / rangeOvr) * graphHeight;
+
+    // Labels Fixas para 2026 (Jan, Mar, Mai, Jul, Set, Nov)
+    // Distribuídas visualmente pelo justify-between no JSX
+    const displayLabels = ["JAN", "MAR", "MAI", "JUL", "SET", "NOV"];
+
+    return { pathD, lastX, lastY, displayLabels };
   }, [player]);
 
   const processImage = (file: File): Promise<string> => {
@@ -246,7 +286,7 @@ const Home: React.FC<HomeProps> = ({ player, matches, onPlayerUpdate }) => {
         <div className="bg-slate-800 border border-slate-700 rounded-2xl p-6 relative overflow-hidden shadow-xl">
            <div className="flex items-center gap-2 mb-6">
               <TrendingUp className="text-emerald-400" />
-              <h3 className="text-white font-bold uppercase tracking-wider text-sm">Evolução OVR</h3>
+              <h3 className="text-white font-bold uppercase tracking-wider text-sm">Evolução OVR (2026)</h3>
            </div>
            <div className="h-40 flex items-end justify-between gap-2 relative z-10">
                <svg className="absolute inset-0 w-full h-full overflow-visible" preserveAspectRatio="none">
@@ -261,6 +301,7 @@ const Home: React.FC<HomeProps> = ({ player, matches, onPlayerUpdate }) => {
         </div>
       </div>
       
+      {/* MODALS */}
       {isEditingPhoto && (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
               <div className="bg-slate-800 border border-slate-700 rounded-xl shadow-2xl w-full max-w-sm p-6 relative">
