@@ -203,12 +203,12 @@ const Home: React.FC<HomeProps> = ({ player, matches, onPlayerUpdate }) => {
 
               {/* --- CONQUISTA OSTENTADA (Lado Esquerdo, sem moldura) --- */}
               {featuredAchievement && (
-                <div className="mt-4" title={`Ostentando: ${featuredAchievement.title}`}>
+                <div className="mt-5" title={`Ostentando: ${featuredAchievement.title}`}>
                     {featuredAchievement.imageUrl ? (
                         <img 
                           src={featuredAchievement.imageUrl} 
                           alt={featuredAchievement.title} 
-                          className="w-10 h-10 object-contain drop-shadow-md" 
+                          className="w-15 h-20 object-contain drop-shadow-md" 
                         />
                     ) : (
                         <featuredAchievement.icon 

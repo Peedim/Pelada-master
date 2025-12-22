@@ -6,16 +6,16 @@ export enum PlayerPosition {
 }
 
 export enum PlayStyle {
-  WALL = 'Muralha',
-  SWEEPER_KEEPER = 'Goleiro Linha',
-  ANCHOR = 'Defensor Fixo',
-  ALL_ROUNDER = 'Coringa',
-  PIVOT = 'Pivô',
-  DRIBBLER = 'Driblador',
-  PACER = 'Pace Certeiro',
-  SUPPORT = 'Suporte',
-  FINISHER = 'Finalizador',
-  POACHER = 'Caça-Gols'
+  ARTILHEIRO = 'Artilheiro',
+  GARCOM = 'Garçom',
+  PAREDAO = 'Paredão',
+  MOTORZINHO = 'Motorzinho',
+  MAESTRO = 'Maestro',
+  LISO = 'Liso',
+  XERIFE = 'Xerife',
+  CORINGA = 'Coringa',
+  MURALHA = 'Muralha',         // <--- NOVO
+  GOLEIRO_LINHA = 'Goleiro Linha' // <--- NOVO
 }
 
 export interface PlayerAttributes {

@@ -16,14 +16,14 @@ import { Player, PlayerFormData, Match, MatchStatus } from './types';
 import { playerService } from './services/playerService';
 import { matchService } from './services/matchService';
 import { supabase } from './services/supabaseClient';
-import { LayoutDashboard, Shuffle, FolderOpen, History, LogOut } from 'lucide-react'; // Removi Bell daqui pois será usado dentro do componente
+import { LayoutDashboard, Shuffle, FolderOpen, History, LogOut } from 'lucide-react';
 import AuthGuard from './components/AuthGuard'; 
 import Achievements from './components/Achievements';
-import NotificationBell from './components/NotificationBell'; 
+import NotificationBell from './components/NotificationBell';
+import PlayerOnboarding from './components/PlayerOnboarding'; // <--- 1. IMPORT NOVO
 
 type AdminView = 'dashboard' | 'create' | 'edit' | 'sorter' | 'drafts' | 'draft-editor' | 'active-match' | 'history';
 
-// TIPO ATUALIZADO
 type MainTab = 'home' | 'career' | 'rankings' | 'achievements' | 'admin';
 
 const App: React.FC = () => {
@@ -132,8 +132,6 @@ const App: React.FC = () => {
             
             {mainTab === 'admin' && <DataExport />}
             
-            {/* --- AQUI ENTRA O SINO NOVO --- */}
-            {/* O sino aparece SEMPRE para o usuário logado (currentUser), não só na Home */}
             {currentUser && (
                <NotificationBell 
                   currentUser={currentUser} 
@@ -147,31 +145,44 @@ const App: React.FC = () => {
       </div>
 
       <main className="max-w-7xl mx-auto py-4">
-        {mainTab === 'home' && currentUser && <Home player={currentUser} matches={matches} />}
-        {mainTab === 'career' && currentUser && <Career currentUser={currentUser} />}
-        
-        {/* RENDERIZAÇÃO DA TELA DE RANKINGS */}
-        {mainTab === 'rankings' && <Rankings players={players} />}
-        {mainTab === 'achievements' && currentUser && (
-          <Achievements player={currentUser} />
-        )}
-        
-        {mainTab === 'home' && !currentUser && <div className="flex flex-col items-center justify-center pt-20 text-slate-500"><p>Usuário não identificado.</p></div>}
-        {mainTab === 'admin' && (
-          <AuthGuard isAdminRoute={true} currentUserAdmin={isAdmin}>
-            <div className="px-4 sm:px-6 lg:px-8 pb-20">
-              {adminView === 'dashboard' && <PlayerDashboard players={players} onAddPlayer={handleAddPlayerClick} onEditPlayer={handleEditPlayerClick} />}
-              {(adminView === 'create' || adminView === 'edit') && <PlayerForm initialData={selectedPlayer} onSubmit={handleFormSubmit} onCancel={handleCancel} isLoading={actionLoading} />}
-              {adminView === 'sorter' && <TeamSorter players={players} onDraftSaved={handleDraftSaved} />}
-              {adminView === 'drafts' && <DraftList onSelectMatch={handleSelectMatch} />}
-              {adminView === 'draft-editor' && selectedDraftId && <DraftEditor matchId={selectedDraftId} onBack={() => setAdminView('drafts')} onPublish={handlePublishMatch} isLoading={actionLoading} />}
-              {adminView === 'active-match' && activeMatchId && <ActiveMatchDashboard matchId={activeMatchId} onBack={() => setAdminView(previousAdminView)} onMatchUpdate={refreshData} />}
-              {adminView === 'history' && <MatchHistory onSelectMatch={handleSelectHistoryMatch} />}
-            </div>
-          </AuthGuard>
+        {/* --- 2. LÓGICA DE ONBOARDING --- */}
+        {/* Se o usuário não tiver Posição ou Estilo, mostra SÓ o Onboarding */}
+        {currentUser && (!currentUser.position || !currentUser.playStyle) ? (
+            <PlayerOnboarding 
+                player={currentUser} 
+                onComplete={refreshData} 
+            />
+        ) : (
+            /* --- SE O PERFIL ESTIVER COMPLETO, MOSTRA O APP NORMAL --- */
+            <>
+                {mainTab === 'home' && currentUser && <Home player={currentUser} matches={matches} />}
+                {mainTab === 'career' && currentUser && <Career currentUser={currentUser} />}
+                
+                {mainTab === 'rankings' && <Rankings players={players} />}
+                {mainTab === 'achievements' && currentUser && (
+                  <Achievements player={currentUser} />
+                )}
+                
+                {mainTab === 'home' && !currentUser && <div className="flex flex-col items-center justify-center pt-20 text-slate-500"><p>Usuário não identificado.</p></div>}
+                {mainTab === 'admin' && (
+                  <AuthGuard isAdminRoute={true} currentUserAdmin={isAdmin}>
+                    <div className="px-4 sm:px-6 lg:px-8 pb-20">
+                      {adminView === 'dashboard' && <PlayerDashboard players={players} onAddPlayer={handleAddPlayerClick} onEditPlayer={handleEditPlayerClick} />}
+                      {(adminView === 'create' || adminView === 'edit') && <PlayerForm initialData={selectedPlayer} onSubmit={handleFormSubmit} onCancel={handleCancel} isLoading={actionLoading} />}
+                      {adminView === 'sorter' && <TeamSorter players={players} onDraftSaved={handleDraftSaved} />}
+                      {adminView === 'drafts' && <DraftList onSelectMatch={handleSelectMatch} />}
+                      {adminView === 'draft-editor' && selectedDraftId && <DraftEditor matchId={selectedDraftId} onBack={() => setAdminView('drafts')} onPublish={handlePublishMatch} isLoading={actionLoading} />}
+                      {adminView === 'active-match' && activeMatchId && <ActiveMatchDashboard matchId={activeMatchId} onBack={() => setAdminView(previousAdminView)} onMatchUpdate={refreshData} />}
+                      {adminView === 'history' && <MatchHistory onSelectMatch={handleSelectHistoryMatch} />}
+                    </div>
+                  </AuthGuard>
+                )}
+            </>
         )}
       </main>
       
+      {/* Footer é escondido durante o Onboarding se quiser, ou pode manter. 
+          Aqui mantivemos, mas o Onboarding é um modal "fixed", então ele cobre tudo. */}
       <FooterNav currentTab={mainTab} onTabChange={(tab) => setMainTab(tab as MainTab)} isAdmin={isAdmin} />
     </div>
   );

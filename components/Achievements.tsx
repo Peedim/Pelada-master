@@ -187,10 +187,10 @@ const Achievements: React.FC<AchievementsProps> = ({ player }) => {
                         
                         <div className={`mb-2 transition-transform duration-500 ${isActive ? 'scale-110' : ''}`}>
                             {isUnlocked ? (
-                                achiev.imageUrl ? <img src={achiev.imageUrl} alt={achiev.title} className="w-8 h-8 object-contain drop-shadow-md" /> : <Icon size={32} className={`${getIconStyles(achiev.level, true)}`} />
+                                achiev.imageUrl ? <img src={achiev.imageUrl} alt={achiev.title} className="w-10 h-9 object-contain drop-shadow-md" /> : <Icon size={32} className={`${getIconStyles(achiev.level, true)}`} />
                             ) : (<Lock size={24} className="text-slate-700" />)}
                         </div>
-                        <span className={`text-[10px] font-bold leading-tight line-clamp-2 px-1 text-center ${isUnlocked ? 'text-slate-300' : 'text-slate-600'}`}>{achiev.title}</span>
+                        <span className={`text-[10px] font-bold leading-tight line-clamp-2 px-2 text-center ${isUnlocked ? 'text-slate-300' : 'text-slate-600'}`}>{achiev.title}</span>
                         {isUnlocked && <div className={`absolute -bottom-4 -right-4 w-12 h-12 blur-xl opacity-20 pointer-events-none rounded-full ${achiev.level === 'Elite' ? 'bg-yellow-500' : achiev.level === 'Esmeralda' ? 'bg-emerald-500' : achiev.level === 'Prata' ? 'bg-slate-100' : 'bg-amber-600'}`}></div>}
                     </div>
 

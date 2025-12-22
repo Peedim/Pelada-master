@@ -144,6 +144,18 @@ export const ACHIEVEMENTS_LIST: Achievement[] = [
     condition: () => false, // Só manual!
     progress: () => 0
   },
+  {
+    id: 'escolinha_veganinho', 
+    category: 'Especiais', 
+    title: 'Escolinha Veganinho', 
+    description: '5 Gols de fora da área com a trivela do Vegano',
+    icon: Crown,
+    imageUrl: '/badges/escolinha_veganinho.webp', 
+    level: 'Elite', 
+    targetValue: 1,
+    condition: () => false, // Só manual!
+    progress: () => 0
+  },
     
   // -------GOLS-------
   {
