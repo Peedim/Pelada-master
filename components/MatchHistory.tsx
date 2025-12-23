@@ -1,8 +1,7 @@
-
 import React, { useEffect, useState } from 'react';
-import { Match, MatchStatus, Player, Game, Goal } from '../types';
+import { Match, MatchStatus, Player, Game, Goal, GamePhase } from '../types';
 import { matchService } from '../services/matchService';
-import { Trophy, Calendar, AlertCircle, ChevronDown, ChevronUp, Users, Activity, Zap, Medal } from 'lucide-react';
+import { Trophy, Calendar, AlertCircle, ChevronDown, ChevronUp, Users, Activity, Zap, Medal, Star } from 'lucide-react';
 
 interface MatchHistoryProps {
   onSelectMatch: (matchId: string) => void;
@@ -42,7 +41,6 @@ const MatchHistory: React.FC<MatchHistoryProps> = ({ onSelectMatch }) => {
       if (finalGame) {
         if (finalGame.homeScore > finalGame.awayScore) return match.teams.find(t => t.id === finalGame.homeTeamId)?.name;
         if (finalGame.awayScore > finalGame.homeScore) return match.teams.find(t => t.id === finalGame.awayTeamId)?.name;
-        // Check standings if draw/penalties logic missing
       }
     }
     const standings = matchService.calculateStandings(match);
@@ -78,7 +76,7 @@ const MatchHistory: React.FC<MatchHistoryProps> = ({ onSelectMatch }) => {
           Galeria de Troféus
         </h2>
         <p className="text-slate-400 text-sm mt-1">
-          Histórico de eventos realizados. Clique em um evento para ver os detalhes.
+          Histórico de eventos realizados e seus campeões.
         </p>
       </div>
 
@@ -101,7 +99,7 @@ const MatchHistory: React.FC<MatchHistoryProps> = ({ onSelectMatch }) => {
                   key={match.id} 
                   className={`bg-slate-800 border transition-all overflow-hidden rounded-lg ${isExpanded ? 'border-green-500 ring-1 ring-green-500/50' : 'border-slate-700 hover:border-slate-600'}`}
               >
-                {/* Card Header (Clickable) */}
+                {/* Card Header */}
                 <div 
                   onClick={() => toggleExpand(match.id)}
                   className="p-5 flex flex-col md:flex-row items-center justify-between gap-4 cursor-pointer relative bg-slate-800 z-10 hover:bg-slate-750 transition-colors"
@@ -133,7 +131,7 @@ const MatchHistory: React.FC<MatchHistoryProps> = ({ onSelectMatch }) => {
                   </div>
                 </div>
 
-                {/* Expanded Accordion Content */}
+                {/* Expanded Details */}
                 {isExpanded && (
                    <MatchDetails match={match} getPlayerName={getPlayerName} getTeamName={getTeamName} />
                 )}
@@ -154,6 +152,26 @@ const MatchDetails: React.FC<{
 }> = ({ match, getPlayerName, getTeamName }) => {
     const [activeTab, setActiveTab] = useState<'squads' | 'matches'>('matches');
 
+    // Agrupamento por Fase
+    const gamesByPhase = match.games
+        .filter(g => g.status === 'FINISHED')
+        .reduce((acc, game) => {
+            const phase = game.phase || 'OUTROS';
+            if (!acc[phase]) acc[phase] = [];
+            acc[phase].push(game);
+            return acc;
+        }, {} as Record<string, Game[]>);
+
+    // Ordem de exibição das fases (Inverso da cronologia para destaque nas finais)
+    const phaseOrder = [GamePhase.FINAL, GamePhase.THIRD_PLACE, GamePhase.PHASE_2, GamePhase.PHASE_1];
+    
+    const phaseLabels: Record<string, string> = {
+        [GamePhase.FINAL]: 'Grande Final',
+        [GamePhase.THIRD_PLACE]: 'Disputa de 3º Lugar',
+        [GamePhase.PHASE_2]: 'Fase Intermediária',
+        [GamePhase.PHASE_1]: 'Fase de Classificação'
+    };
+
     return (
         <div className="border-t border-slate-700 bg-slate-900/50 p-4 animate-slide-down">
             {/* Tabs */}
@@ -172,55 +190,107 @@ const MatchDetails: React.FC<{
                 </button>
             </div>
 
-            {/* Content: Matches */}
+            {/* Content: Matches (AGORA COM DIVISÃO DE FASES) */}
             {activeTab === 'matches' && (
-                <div className="space-y-4">
-                    {match.games.filter(g => g.status === 'FINISHED').sort((a,b) => b.sequence - a.sequence).map(game => {
-                        const gameGoals = match.goals?.filter(gl => gl.gameId === game.id) || [];
+                <div className="space-y-6">
+                    {phaseOrder.map(phase => {
+                        const games = gamesByPhase[phase];
+                        if (!games || games.length === 0) return null;
+
+                        // Ícone e Cor baseados na fase
+                        let phaseIcon = <Activity size={14} />;
+                        let phaseColor = "text-slate-400";
+                        let borderColor = "border-slate-700";
+
+                        if (phase === GamePhase.FINAL) {
+                            phaseIcon = <Trophy size={14} />;
+                            phaseColor = "text-yellow-500";
+                            borderColor = "border-yellow-500/30";
+                        } else if (phase === GamePhase.THIRD_PLACE) {
+                            phaseIcon = <Medal size={14} />;
+                            phaseColor = "text-orange-400";
+                        } else if (phase === GamePhase.PHASE_2) {
+                            phaseIcon = <Star size={14} />;
+                            phaseColor = "text-blue-400";
+                        }
+
                         return (
-                            <div key={game.id} className="bg-slate-800 rounded border border-slate-700 p-3">
-                                {/* Scoreboard Header */}
-                                <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-700/50">
-                                    <div className="flex-1 text-right font-bold text-slate-200">{getTeamName(match, game.homeTeamId)}</div>
-                                    <div className="px-4 flex items-center gap-2">
-                                        <span className="text-xl font-mono text-white bg-slate-900 px-2 rounded">{game.homeScore}</span>
-                                        <span className="text-slate-600 text-xs">x</span>
-                                        <span className="text-xl font-mono text-white bg-slate-900 px-2 rounded">{game.awayScore}</span>
-                                    </div>
-                                    <div className="flex-1 text-left font-bold text-slate-200">{getTeamName(match, game.awayTeamId)}</div>
+                            <div key={phase} className="animate-fade-in">
+                                {/* Cabeçalho da Fase */}
+                                <div className="flex items-center gap-2 mb-3 px-1">
+                                    <span className={`text-xs font-bold uppercase tracking-wider flex items-center gap-1.5 ${phaseColor}`}>
+                                        {phaseIcon} {phaseLabels[phase] || phase}
+                                    </span>
+                                    <div className={`h-px flex-1 bg-gradient-to-r from-slate-700 to-transparent`}></div>
                                 </div>
 
-                                {/* Goals List */}
-                                {gameGoals.length > 0 ? (
-                                    <div className="space-y-1.5">
-                                        {gameGoals.map(goal => (
-                                            <div key={goal.id} className="text-xs flex items-center justify-center gap-2 text-slate-400">
-                                                <Zap size={10} className="text-yellow-500" />
-                                                <span className="text-slate-300 font-medium">{getPlayerName(match, goal.scorerId)}</span>
-                                                {goal.assistId && (
-                                                    <span className="text-slate-500 italic">
-                                                        (ast. {getPlayerName(match, goal.assistId)})
-                                                    </span>
+                                {/* Lista de Jogos da Fase */}
+                                <div className="space-y-3">
+                                    {games.sort((a,b) => b.sequence - a.sequence).map(game => {
+                                        const gameGoals = match.goals?.filter(gl => gl.gameId === game.id) || [];
+                                        const isFinal = phase === GamePhase.FINAL;
+                                        
+                                        return (
+                                            <div key={game.id} className={`bg-slate-800 rounded border p-3 ${isFinal ? 'border-yellow-500/30 ring-1 ring-yellow-500/10' : 'border-slate-700'}`}>
+                                                {/* Scoreboard */}
+                                                <div className="flex items-center justify-between mb-3 pb-2 border-b border-slate-700/50">
+                                                    <div className="flex-1 text-right font-bold text-slate-200 text-sm sm:text-base">{getTeamName(match, game.homeTeamId)}</div>
+                                                    <div className="px-3 flex items-center gap-2">
+                                                        <span className={`text-lg font-mono font-bold px-2 rounded ${isFinal ? 'text-yellow-400 bg-yellow-900/20' : 'text-white bg-slate-900'}`}>{game.homeScore}</span>
+                                                        <span className="text-slate-600 text-xs">x</span>
+                                                        <span className={`text-lg font-mono font-bold px-2 rounded ${isFinal ? 'text-yellow-400 bg-yellow-900/20' : 'text-white bg-slate-900'}`}>{game.awayScore}</span>
+                                                    </div>
+                                                    <div className="flex-1 text-left font-bold text-slate-200 text-sm sm:text-base">{getTeamName(match, game.awayTeamId)}</div>
+                                                </div>
+
+                                                {/* Goals List */}
+                                                {gameGoals.length > 0 ? (
+                                                    <div className="space-y-1.5">
+                                                        {gameGoals.map(goal => (
+                                                            <div key={goal.id} className="text-xs flex items-center justify-center gap-2 text-slate-400 flex-wrap">
+                                                                <Zap size={10} className="text-yellow-500" />
+                                                                <span className="text-slate-300 font-medium">{getPlayerName(match, goal.scorerId)}</span>
+                                                                {goal.assistId && (
+                                                                    <span className="text-slate-500 italic">
+                                                                        (ast. {getPlayerName(match, goal.assistId)})
+                                                                    </span>
+                                                                )}
+                                                                <span className="bg-slate-700/50 px-1.5 rounded text-[10px] text-slate-500 border border-slate-700">
+                                                                    {getTeamName(match, goal.teamId)}
+                                                                </span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                ) : (
+                                                    <div className="text-center text-[10px] text-slate-600 italic">Sem gols registrados</div>
                                                 )}
-                                                <span className="bg-slate-700 px-1.5 rounded text-[10px] text-slate-400">
-                                                    {getTeamName(match, goal.teamId)}
-                                                </span>
+                                                
+                                                {/* Pênaltis Info (se houver) */}
+                                                {game.homeScore === game.awayScore && game.penaltyShootout && (
+                                                    <div className="mt-2 text-center pt-2 border-t border-slate-700/30">
+                                                        <span className="text-xs text-slate-400">Pênaltis: </span>
+                                                        <span className="text-xs font-bold text-white">
+                                                            {game.penaltyShootout.homeScore} - {game.penaltyShootout.awayScore}
+                                                        </span>
+                                                    </div>
+                                                )}
                                             </div>
-                                        ))}
-                                    </div>
-                                ) : (
-                                    <div className="text-center text-xs text-slate-600 italic">Sem gols registrados</div>
-                                )}
+                                        );
+                                    })}
+                                </div>
                             </div>
                         );
                     })}
+                    
                     {match.games.filter(g => g.status === 'FINISHED').length === 0 && (
-                        <div className="text-center text-slate-500 py-4">Nenhuma partida registrada com placar.</div>
+                        <div className="text-center text-slate-500 py-8 border-2 border-dashed border-slate-700 rounded-lg">
+                            Nenhuma partida registrada com placar neste evento.
+                        </div>
                     )}
                 </div>
             )}
 
-            {/* Content: Squads */}
+            {/* Content: Squads (Mantido Igual) */}
             {activeTab === 'squads' && (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     {match.teams.map(team => (
