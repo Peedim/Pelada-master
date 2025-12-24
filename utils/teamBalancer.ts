@@ -25,14 +25,14 @@ export const generateTeams = (players: Player[], type: TournamentType): Team[] =
   // Inicializa times
   const teams: Team[] = Array.from({ length: numTeams }, (_, i) => ({
     id: `team-${i}`,
-    name: teamNames[i] || `Time ${String.fromCharCode(65 + i)}`, // Usa nome da cor ou letra se faltar
+    name: teamNames[i] || `Time ${String.fromCharCode(65 + i)}`, 
     players: [],
     totalOvr: 0,
     avgOvr: 0,
     styleCounts: {} 
   }));
 
-  // Ordenação Base
+  // Ordenação Base (Melhores primeiro para distribuição "Snake")
   const sortByOvrDesc = (a: Player, b: Player) => b.initial_ovr - a.initial_ovr;
 
   // 2. Criação dos Potes Táticos
@@ -48,7 +48,7 @@ export const generateTeams = (players: Player[], type: TournamentType): Team[] =
       let processingPool = [...pool];
       while (processingPool.length > 0) {
           const batch = processingPool.splice(0, numTeams);
-          const shuffledBatch = shuffleArray(batch);
+          const shuffledBatch = shuffleArray(batch); // Embaralha o lote atual (ex: os 4 melhores zagueiros)
 
           shuffledBatch.forEach(player => {
               let bestTeamIndex = -1;
@@ -56,13 +56,17 @@ export const generateTeams = (players: Player[], type: TournamentType): Team[] =
 
               teams.forEach((team, index) => {
                   let score = team.totalOvr;
+                  
+                  // Fator Aleatório (Ruído) para não ficar sempre igual
                   const noise = (Math.random() * 10) - 5;
                   score += noise;
 
+                  // Penalidade por Estilo de Jogo Repetido (ex: muitos "Fominhas" juntos)
                   const currentStyle = player.playStyle || 'Unknown';
                   const styleCount = team.styleCounts[currentStyle] || 0;
                   score += (styleCount * 25);
 
+                  // Penalidade por Posição Repetida (tenta espalhar posições se o pool for misto)
                   const samePosCount = team.players.filter(p => p.position === player.position).length;
                   score += (samePosCount * 10);
 
@@ -75,6 +79,7 @@ export const generateTeams = (players: Player[], type: TournamentType): Team[] =
               const targetTeam = teams[bestTeamIndex];
               targetTeam.players.push(player);
               targetTeam.totalOvr += player.initial_ovr;
+              
               const style = player.playStyle || 'Unknown';
               targetTeam.styleCounts[style] = (targetTeam.styleCounts[style] || 0) + 1;
           });
@@ -86,14 +91,18 @@ export const generateTeams = (players: Player[], type: TournamentType): Team[] =
   distributePool(mids);
   distributePool(atts);
 
-  // 4. Distribuição de Goleiros (Visual)
-  goalkeepers.forEach((gk, index) => {
+  // 4. Distribuição de Goleiros (ALEATÓRIA)
+  // Embaralhamos para evitar que o "Time Branco" sempre pegue o Goleiro Top 1 da lista
+  const shuffledGKs = shuffleArray(goalkeepers); 
+  
+  shuffledGKs.forEach((gk, index) => {
       if (index < numTeams) {
-          teams[index].players.unshift(gk);
+          teams[index].players.unshift(gk); // Coloca o goleiro no topo da lista visual
+          // Nota: Não somamos ao totalOvr aqui para não afetar a média de linha, conforme solicitado
       }
   });
 
-  // 5. Finalização e Ordenação
+  // 5. Finalização e Ordenação Visual da Lista
   const positionOrder: Record<string, number> = { 
       [PlayerPosition.GOLEIRO]: 0, 
       [PlayerPosition.DEFENSOR]: 1, 
@@ -105,9 +114,11 @@ export const generateTeams = (players: Player[], type: TournamentType): Team[] =
     team.players.sort((a, b) => {
         const posA = positionOrder[a.position] || 99;
         const posB = positionOrder[b.position] || 99;
+        // Ordena por Posição -> Depois por OVR
         return (posA - posB) || (b.initial_ovr - a.initial_ovr);
     });
 
+    // Média apenas dos jogadores de linha (Refletindo a força real do time na linha)
     const lineOnly = team.players.filter(p => p.position !== PlayerPosition.GOLEIRO);
     team.avgOvr = lineOnly.length > 0 
         ? Math.round(lineOnly.reduce((a, b) => a + b.initial_ovr, 0) / lineOnly.length) 

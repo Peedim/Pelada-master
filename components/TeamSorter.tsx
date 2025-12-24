@@ -146,11 +146,6 @@ const TeamSorter: React.FC<TeamSorterProps> = ({ players, onDraftSaved }) => {
       return { bgHeader: 'bg-slate-800', textHeader: 'text-white', border: 'border-slate-700' };
   };
 
-  const sortedGKs = useMemo(() => {
-      if (!generatedTeams) return [];
-      return generatedTeams.flatMap(t => t.players.filter(p => p.position === PlayerPosition.GOLEIRO));
-  }, [generatedTeams]);
-
   return (
     <div className="w-full max-w-7xl mx-auto space-y-6 animate-fade-in pb-20">
       <div className="text-center mb-8">
@@ -211,9 +206,9 @@ const TeamSorter: React.FC<TeamSorterProps> = ({ players, onDraftSaved }) => {
             <div className="space-y-4 animate-slide-up">
               <div ref={exportRef} className="bg-slate-900 p-4 rounded-xl border border-slate-800">
                   <div className="text-center mb-4 md:hidden"><h2 className="text-xl font-bold text-white mb-1">Sorteio do Baba</h2><p className="text-slate-400 text-sm">{new Date(config.date).toLocaleDateString('pt-BR')} - {config.location}</p></div>
-                  {sortedGKs.length > 0 && (<div className="bg-slate-800/80 border border-yellow-600/30 rounded-lg overflow-hidden mb-6"><div className="bg-yellow-900/20 px-3 py-2 border-b border-yellow-600/30 flex items-center gap-2"><Shirt size={16} className="text-yellow-500" /><h4 className="font-bold text-white text-sm">Goleiros Definidos</h4></div><div className="divide-y divide-slate-700/50">{sortedGKs.map(gk => (<div key={gk.id} className="px-3 py-2 flex justify-between items-center text-sm"><span className="text-yellow-500 font-bold flex items-center gap-2">{gk.name} 🧤</span><span className={`font-bold ${getOvrColor(gk.initial_ovr)}`}>{gk.initial_ovr}</span></div>))}</div></div>)}
+                  {/* REMOVIDO A TABELA SEPARADA DE GOLEIROS AQUI */}
                   
-                  <div className="flex items-center justify-between mb-3"><h3 className="text-lg font-bold text-white flex items-center gap-2"><Trophy className="text-blue-400" size={18} /> Times (Linha)</h3><span className="text-slate-400 text-xs bg-slate-800 px-2 py-1 rounded">Média OVR: {Math.round(generatedTeams.reduce((a, b) => a + b.avgOvr, 0) / generatedTeams.length)}</span></div>
+                  <div className="flex items-center justify-between mb-3"><h3 className="text-lg font-bold text-white flex items-center gap-2"><Trophy className="text-blue-400" size={18} /> Times</h3><span className="text-slate-400 text-xs bg-slate-800 px-2 py-1 rounded">Média OVR: {Math.round(generatedTeams.reduce((a, b) => a + b.avgOvr, 0) / generatedTeams.length)}</span></div>
                   <div className="space-y-4">
                     {generatedTeams.map((team) => {
                       const style = getTeamStyle(team.name);
@@ -224,9 +219,16 @@ const TeamSorter: React.FC<TeamSorterProps> = ({ players, onDraftSaved }) => {
                             <span className={`text-sm font-bold ${style.textHeader === 'text-white' ? 'text-green-400' : 'text-slate-900'} bg-black/20 px-2 py-0.5 rounded`}>{team.avgOvr}</span>
                           </div>
                           <div className="divide-y divide-slate-700/50">
-                            {team.players.filter(p => p.position !== PlayerPosition.GOLEIRO).map((player, idx) => (
+                            {/* REMOVIDO O FILTRO DE GOLEIROS */}
+                            {team.players.map((player, idx) => (
                               <div key={player.id} className="px-4 py-2 flex justify-between items-center text-sm hover:bg-slate-700/30 transition-colors">
-                                 <div className="flex items-center gap-3"><span className="text-slate-500 text-xs font-mono w-4">{idx + 1}.</span><span className="text-slate-200 font-medium">{player.name}</span></div><span className={`font-bold ${getOvrColor(player.initial_ovr)}`}>{player.initial_ovr}</span>
+                                 <div className="flex items-center gap-3">
+                                    <span className="text-slate-500 text-xs font-mono w-4">{idx + 1}.</span>
+                                    <span className={`font-medium ${player.position === PlayerPosition.GOLEIRO ? 'text-yellow-500 font-bold' : 'text-slate-200'}`}>
+                                        {player.name} {player.position === PlayerPosition.GOLEIRO && '🧤'}
+                                    </span>
+                                 </div>
+                                 <span className={`font-bold ${getOvrColor(player.initial_ovr)}`}>{player.initial_ovr}</span>
                               </div>
                             ))}
                           </div>

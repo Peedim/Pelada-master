@@ -156,6 +156,18 @@ export const ACHIEVEMENTS_LIST: Achievement[] = [
     condition: () => false, // Só manual!
     progress: () => 0
   },
+    {
+    id: 'patrick', 
+    category: 'Especiais', 
+    title: 'Rei dos Cupons', 
+    description: 'Faça uma compra usando um cupom de desconto do Patrick.',
+    icon: Crown,
+    imageUrl: '/badges/patrick.png', 
+    level: 'Esmeralda', 
+    targetValue: 1,
+    condition: () => false, // Só manual!
+    progress: () => 0
+  },
     
   // -------GOLS-------
   {

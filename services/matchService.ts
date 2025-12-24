@@ -21,10 +21,9 @@ const calculateTeamStats = (players: Player[]) => {
 // --- HELPER: Transforma dados do Banco com SEGURANÇA ---
 const mapDatabaseToMatch = (dbMatch: any): Match => {
   const teams: Team[] = dbMatch.match_teams.map((t: any) => {
-    // CORREÇÃO 1: Filtrar jogadores nulos para evitar crash da tela branca
     const players: Player[] = t.team_players
       .map((tp: any) => {
-        if (!tp.player) return null; // Se o jogador foi deletado ou falhou o join, ignora
+        if (!tp.player) return null; 
         return {
             ...tp.player,
             playStyle: tp.player.play_style,
@@ -37,7 +36,7 @@ const mapDatabaseToMatch = (dbMatch: any): Match => {
             }
         };
       })
-      .filter((p: any) => p !== null); // Remove os nulos do array final
+      .filter((p: any) => p !== null); 
 
     const { totalOvr, avgOvr, styleCounts } = calculateTeamStats(players);
     return { id: t.id, name: t.name, players, totalOvr, avgOvr, styleCounts };
@@ -124,15 +123,14 @@ export const matchService = {
     await supabase.from('matches').delete().eq('id', id);
   },
 
-  // CORREÇÃO 2: Delete robusto com verificação de erro
   removePlayerFromTeam: async (matchId: string, teamId: string, playerId: string): Promise<Match> => {
     const { error } = await supabase
         .from('team_players')
         .delete()
-        .eq('team_id', teamId)     // Usa .eq em vez de .match para ser mais explícito
+        .eq('team_id', teamId)
         .eq('player_id', playerId);
     
-    if (error) throw error; // Lança o erro para o frontend saber que falhou
+    if (error) throw error;
     
     return (await matchService.getById(matchId))!;
   },
@@ -147,19 +145,43 @@ export const matchService = {
     if (!match) return;
     const generatedGames = generateFixtures(match.id, match.teams, match.type as any);
     
-    // CORREÇÃO 3: Tratar IDs undefined como null para o banco
     const gamesInsert = generatedGames.map(g => ({
       match_id: match.id,
       phase: g.phase,
       sequence: g.sequence,
-      home_team_id: match.teams.find(t => t.id === g.homeTeamId)?.id || null, // Garante null se for TBD
-      away_team_id: match.teams.find(t => t.id === g.awayTeamId)?.id || null, // Garante null se for TBD
+      home_team_id: match.teams.find(t => t.id === g.homeTeamId)?.id || null, 
+      away_team_id: match.teams.find(t => t.id === g.awayTeamId)?.id || null, 
       status: GameStatus.WAITING,
       home_score: 0,
       away_score: 0
     }));
     await supabase.from('matches').update({ status: MatchStatus.OPEN }).eq('id', matchId);
     await supabase.from('games').insert(gamesInsert);
+  },
+
+  // --- NOVA FUNÇÃO: CRIAR JOGO DE DESEMPATE ---
+  createTieBreakerGame: async (matchId: string, homeTeamId: string, awayTeamId: string): Promise<Match> => {
+    const match = await matchService.getById(matchId);
+    if (!match) throw new Error("Match not found");
+
+    // Verifica se já existe para não duplicar
+    const exists = match.games.some(g => g.phase === GamePhase.TIE_BREAKER);
+    if (exists) return match;
+
+    await supabase.from('games').insert([{
+        match_id: matchId,
+        phase: GamePhase.TIE_BREAKER,
+        sequence: 99, // Alta sequência para ficar no final
+        home_team_id: homeTeamId,
+        away_team_id: awayTeamId,
+        status: GameStatus.WAITING,
+        home_score: 0,
+        away_score: 0,
+        // Já inicia com estrutura de pênaltis pois é obrigatório
+        penalty_shootout: { homeScore: 0, awayScore: 0, history: [] } 
+    }]);
+
+    return (await matchService.getById(matchId))!;
   },
 
   revertToDraft: async (matchId: string): Promise<void> => {
@@ -207,14 +229,21 @@ export const matchService = {
         const phase2Games = match.games.filter(g => g.phase === GamePhase.PHASE_2);
         const isPhase2Done = phase2Games.length > 0 && phase2Games.every(g => g.status === GameStatus.FINISHED);
         
+        // Só atualiza as finais se a Fase 2 acabou E se não tem um Tie Breaker pendente
         if (isPhase2Done) {
-             const finalGame = match.games.find(g => g.phase === GamePhase.FINAL);
-             const thirdGame = match.games.find(g => g.phase === GamePhase.THIRD_PLACE);
+             const activeTieBreaker = match.games.find(g => g.phase === GamePhase.TIE_BREAKER && g.status !== GameStatus.FINISHED);
              
-             if (finalGame && finalGame.homeTeamId === 'TBD') {
-                 const standings = matchService.calculateStandings(match);
-                 await supabase.from('games').update({ home_team_id: standings[0].teamId, away_team_id: standings[1].teamId }).eq('id', finalGame.id);
-                 if (thirdGame) await supabase.from('games').update({ home_team_id: standings[2].teamId, away_team_id: standings[3].teamId }).eq('id', thirdGame.id);
+             // Se tiver jogo de desempate rolando, espera ele acabar
+             if (!activeTieBreaker) {
+                const finalGame = match.games.find(g => g.phase === GamePhase.FINAL);
+                const thirdGame = match.games.find(g => g.phase === GamePhase.THIRD_PLACE);
+                
+                // Atualiza (ou re-atualiza) os times da final com base na tabela (que agora considera o desempate)
+                if (finalGame) {
+                    const standings = matchService.calculateStandings(match);
+                    await supabase.from('games').update({ home_team_id: standings[0].teamId, away_team_id: standings[1].teamId }).eq('id', finalGame.id);
+                    if (thirdGame) await supabase.from('games').update({ home_team_id: standings[2].teamId, away_team_id: standings[3].teamId }).eq('id', thirdGame.id);
+                }
              }
         }
     }
@@ -246,7 +275,7 @@ export const matchService = {
       const { data: game } = await supabase.from('games').select('penalty_shootout, home_team_id').eq('id', gameId).single();
       if (game && game.penalty_shootout) {
           const shootout = game.penalty_shootout as PenaltyShootout;
-          shootout.history.push({ teamId, isGoal, round: shootout.history.length + 1 });
+          shootout.history.push({ teamId, isGoal });
           if (isGoal) {
               if (teamId === game.home_team_id) shootout.homeScore += 1; else shootout.awayScore += 1;
           }
@@ -269,10 +298,10 @@ export const matchService = {
       return (await matchService.getById(matchId))!;
   },
 
-  finishMatch: async (matchId: string): Promise<void> => {
+  finishMatch: async (matchId: string): Promise<Match> => {
     await supabase.from('matches').update({ status: MatchStatus.FINISHED }).eq('id', matchId);
     const match = await matchService.getById(matchId);
-    if (!match) return;
+    if (!match) return match!; // Evita erro se null
 
     const standings = matchService.calculateStandings(match);
     const championId = standings[0]?.teamId;
@@ -296,11 +325,13 @@ export const matchService = {
             }
             team.players.forEach(p => {
                 const s = playerStats[p.id];
-                s.matches++;
-                if (isWin) s.wins++;
-                if (isLoss) s.losses++;
-                if (oppScore === 0) s.cleanSheets++;
-                s.goalsConceded += oppScore;
+                if(s) {
+                    s.matches++;
+                    if (isWin) s.wins++;
+                    if (isLoss) s.losses++;
+                    if (oppScore === 0) s.cleanSheets++;
+                    s.goalsConceded += oppScore;
+                }
             });
         });
     });
@@ -377,6 +408,7 @@ export const matchService = {
             }).eq('id', player.id);
         }
     }
+    return match!;
   },
 
   calculateStandings: (match: Match): Standing[] => {
@@ -397,12 +429,35 @@ export const matchService = {
              else { home.points += 1; home.draws++; away.points += 1; away.draws++; }
         }
     });
-    return Object.values(standings).map(s => ({ ...s, goalDiff: s.goalsFor - s.goalsAgainst })).sort((a, b) => {
+    
+    // 1. Ordenação Normal
+    const sortedStandings = Object.values(standings).map(s => ({ ...s, goalDiff: s.goalsFor - s.goalsAgainst })).sort((a, b) => {
         if (b.points !== a.points) return b.points - a.points;
         if (b.wins !== a.wins) return b.wins - a.wins;
         if (b.goalDiff !== a.goalDiff) return b.goalDiff - a.goalDiff;
         return b.goalsFor - a.goalsFor;
     });
+
+    // 2. Lógica de Desempate (Tie Breaker)
+    const tieBreakerGame = match.games.find(g => g.phase === GamePhase.TIE_BREAKER && g.status === GameStatus.FINISHED);
+    
+    if (tieBreakerGame && tieBreakerGame.penaltyShootout) {
+        const homeWon = tieBreakerGame.penaltyShootout.homeScore > tieBreakerGame.penaltyShootout.awayScore;
+        const winnerId = homeWon ? tieBreakerGame.homeTeamId : tieBreakerGame.awayTeamId;
+        const loserId = homeWon ? tieBreakerGame.awayTeamId : tieBreakerGame.homeTeamId;
+
+        const winnerIndex = sortedStandings.findIndex(s => s.teamId === winnerId);
+        const loserIndex = sortedStandings.findIndex(s => s.teamId === loserId);
+
+        // Se o perdedor estiver na frente do vencedor na tabela, inverte as posições (ou move o vencedor para cima)
+        if (winnerIndex !== -1 && loserIndex !== -1 && loserIndex < winnerIndex) {
+            const [winner] = sortedStandings.splice(winnerIndex, 1);
+            // Insere o vencedor logo na posição onde estava o perdedor
+            sortedStandings.splice(loserIndex, 0, winner);
+        }
+    }
+
+    return sortedStandings;
   },
 
   updateChampionPhoto: async (matchId: string, url: string): Promise<void> => {

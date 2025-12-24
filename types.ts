@@ -68,7 +68,7 @@ export interface Team {
 
 export enum MatchStatus { DRAFT = 'DRAFT', OPEN = 'OPEN', FINISHED = 'FINISHED' }
 export enum GameStatus { WAITING = 'WAITING', LIVE = 'LIVE', FINISHED = 'FINISHED' }
-export enum GamePhase { PHASE_1 = 'PHASE_1', PHASE_2 = 'PHASE_2', THIRD_PLACE = 'THIRD_PLACE', FINAL = 'FINAL' }
+export enum GamePhase { PHASE_1 = 'PHASE_1', PHASE_2 = 'PHASE_2', TIE_BREAKER = 'TIE_BREAKER', THIRD_PLACE = 'THIRD_PLACE', FINAL = 'FINAL' }
 
 export interface PenaltyKick { teamId: string; isGoal: boolean; kickerId?: string; round: number; }
 export interface PenaltyShootout { homeScore: number; awayScore: number; history: PenaltyKick[]; }

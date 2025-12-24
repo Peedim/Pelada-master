@@ -11,19 +11,14 @@ interface LiveMatchControlProps {
 }
 
 const LiveMatchControl: React.FC<LiveMatchControlProps> = ({ match, game, onUpdate }) => {
-  // ... (Estados e hooks iguais)
   const [scoringTeamId, setScoringTeamId] = useState<string | null>(null);
   const [isEndGameConfirmOpen, setIsEndGameConfirmOpen] = useState(false);
   const [selectedScorer, setSelectedScorer] = useState<string | null>(null);
   const [selectedAssist, setSelectedAssist] = useState<string | null>(null);
-  const [isGKModalOpen, setIsGKModalOpen] = useState(false);
-  const [homeGK, setHomeGK] = useState<string | null>(null);
-  const [awayGK, setAwayGK] = useState<string | null>(null);
-  const [allPlayersList, setAllPlayersList] = useState<Player[]>([]);
-  const [isSelectingFor, setIsSelectingFor] = useState<'home' | 'away' | null>(null);
-  const [gkFilterMode, setGkFilterMode] = useState<'GK' | 'ALL'>('GK');
   const [editingGoalId, setEditingGoalId] = useState<string | null>(null);
   const [isProcessing, setIsProcessing] = useState(false);
+  
+  // Animação do Placar
   const [lastHomeScore, setLastHomeScore] = useState(game.homeScore);
   const [lastAwayScore, setLastAwayScore] = useState(game.awayScore);
   const [animateHome, setAnimateHome] = useState(false);
@@ -33,25 +28,15 @@ const LiveMatchControl: React.FC<LiveMatchControlProps> = ({ match, game, onUpda
   const awayTeam = match.teams.find(t => t.id === game.awayTeamId);
 
   const gameGoals = match.goals?.filter(g => g.gameId === game.id) || [];
-  const isKnockout = game.phase === GamePhase.FINAL || game.phase === GamePhase.THIRD_PLACE;
+  
+  // LÓGICA CORRIGIDA PARA DESEMPATE
+  const isKnockout = game.phase === GamePhase.FINAL || game.phase === GamePhase.THIRD_PLACE || game.phase === GamePhase.TIE_BREAKER;
   const isDraw = game.homeScore === game.awayScore;
-  const requiresPenalties = isKnockout && isDraw;
+  
+  // Tie Breaker é SEMPRE disputa de pênaltis, mesmo estando 0-0
+  const requiresPenalties = (isKnockout && isDraw) || game.phase === GamePhase.TIE_BREAKER;
   const inPenaltyMode = !!game.penaltyShootout;
   const maxKicks = game.phase === GamePhase.FINAL ? 5 : 3;
-
-  // Carrega lista completa
-  useEffect(() => {
-     const fetchAll = async () => {
-         const list = await playerService.getAll();
-         setAllPlayersList(list);
-     };
-     fetchAll();
-  }, []);
-
-  // Abre modal se não tiver GK definido (UX)
-  useEffect(() => {
-     if ((!homeGK || !awayGK) && !inPenaltyMode) { }
-  }, [homeGK, awayGK]);
 
   useEffect(() => {
     if (game.homeScore > lastHomeScore) { setAnimateHome(true); setTimeout(() => setAnimateHome(false), 800); }
@@ -100,21 +85,16 @@ const LiveMatchControl: React.FC<LiveMatchControlProps> = ({ match, game, onUpda
   const handlePenaltyKick = async (isGoal: boolean) => { if (isProcessing) return; setIsProcessing(true); const history = game.penaltyShootout?.history || []; const kickCount = history.length; const kickerTeamId = kickCount % 2 === 0 ? homeTeam.id : awayTeam.id; const updated = await matchService.registerPenalty(match.id, game.id, kickerTeamId, isGoal); onUpdate(updated); setTimeout(() => setIsProcessing(false), 500); };
   const handleUndoPenalty = async () => { if (isProcessing || !game.penaltyShootout?.history.length) return; setIsProcessing(true); const updated = await matchService.undoLastPenalty(match.id, game.id); onUpdate(updated); setIsProcessing(false); };
   
-  const getPlayerName = (playerId: string) => { const p = homeTeam.players.find(p => p.id === playerId) || awayTeam.players.find(p => p.id === playerId) || allPlayersList.find(p => p.id === playerId); return p ? p.name : 'Desconhecido'; };
+  const getPlayerName = (playerId: string) => { 
+      const p = homeTeam.players.find(p => p.id === playerId) || awayTeam.players.find(p => p.id === playerId); 
+      return p ? p.name : 'Desconhecido'; 
+  };
+  
   const renderPenaltyDots = (teamId: string) => { const history = game.penaltyShootout?.history || []; const teamKicks = history.filter(k => k.teamId === teamId); const totalRounds = Math.max(maxKicks, Math.ceil(history.length / 2)); const dots = []; for (let i = 0; i < totalRounds; i++) { const kick = teamKicks[i]; if (kick) dots.push(<div key={i} className={`w-5 h-5 flex-shrink-0 rounded-full flex items-center justify-center border-2 ${kick.isGoal ? 'bg-green-600 border-green-400' : 'bg-red-600 border-red-400'}`}>{kick.isGoal ? <CheckCircle size={12} className="text-white" /> : <X size={12} className="text-white" />}</div>); else dots.push(<div key={i} className="w-5 h-5 flex-shrink-0 rounded-full border-2 border-slate-600 bg-slate-800"></div>); } return <div className="flex gap-1.5 justify-center flex-wrap max-w-[150px] mx-auto">{dots}</div>; };
   
   const historyLen = game.penaltyShootout?.history.length || 0;
   const currentKickerTeam = historyLen % 2 === 0 ? homeTeam : awayTeam;
 
-  const handleSelectGK = (player: Player) => {
-      if (isSelectingFor === 'home') setHomeGK(player.id);
-      if (isSelectingFor === 'away') setAwayGK(player.id);
-      setIsGKModalOpen(false); setIsSelectingFor(null);
-  };
-  const openGkSelector = (side: 'home' | 'away') => { setIsSelectingFor(side); setGkFilterMode('GK'); setIsGKModalOpen(true); };
-  const getFilteredPlayersForGK = () => { if (gkFilterMode === 'GK') return allPlayersList.filter(p => p.position === PlayerPosition.GOLEIRO); return allPlayersList.filter(p => p.position !== PlayerPosition.GOLEIRO); };
-
-  // Helper de Cor para Placar
   const getTeamTextColor = (name: string) => {
       if (name.includes('Branco')) return 'text-slate-200';
       if (name.includes('Preto')) return 'text-slate-400';
@@ -123,32 +103,16 @@ const LiveMatchControl: React.FC<LiveMatchControlProps> = ({ match, game, onUpda
       return 'text-white';
   };
 
+  const showGoalButtons = !inPenaltyMode && game.phase !== GamePhase.TIE_BREAKER;
+
   return (
     <div className="bg-slate-800 border-2 border-green-600/50 rounded-xl p-6 shadow-2xl relative overflow-hidden mb-8 animate-fade-in">
         <div className="absolute top-0 left-0 w-full h-1 bg-green-500 animate-pulse"></div>
 
-        {/* --- GK SELECTION BAR --- */}
-        <div className="flex justify-between items-center bg-slate-900/40 p-2 rounded mb-4 text-xs">
-            <div className="flex items-center gap-2">
-                <span className={`hidden sm:inline ${getTeamTextColor(homeTeam.name)}`}>Goleiro {homeTeam.name}:</span>
-                <button onClick={() => openGkSelector('home')} className="text-white font-bold hover:text-green-400 flex items-center gap-1 border border-slate-700 bg-slate-800 px-2 py-1 rounded">
-                    {homeGK ? getPlayerName(homeGK) : <span className="text-yellow-500 animate-pulse">Selecionar</span>}
-                    <Edit2 size={10} />
-                </button>
-            </div>
-            <div className="flex items-center gap-2">
-                <span className={`hidden sm:inline ${getTeamTextColor(awayTeam.name)}`}>Goleiro {awayTeam.name}:</span>
-                <button onClick={() => openGkSelector('away')} className="text-white font-bold hover:text-green-400 flex items-center gap-1 border border-slate-700 bg-slate-800 px-2 py-1 rounded">
-                    {awayGK ? getPlayerName(awayGK) : <span className="text-yellow-500 animate-pulse">Selecionar</span>}
-                    <Edit2 size={10} />
-                </button>
-            </div>
-        </div>
-
         <div className="flex flex-col md:flex-row items-center justify-between gap-6 mb-6">
             <div className="flex-1 text-center md:text-left order-2 md:order-1">
                  <h3 className={`text-2xl font-bold mb-2 ${getTeamTextColor(homeTeam.name)}`}>{homeTeam.name}</h3>
-                 {!inPenaltyMode && ( <button onClick={() => openGoalModal(homeTeam.id)} className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded font-bold shadow-lg transition-transform active:scale-95 flex items-center gap-2 mx-auto md:mx-0"><PlusIcon /> GOL</button> )}
+                 {showGoalButtons && ( <button onClick={() => openGoalModal(homeTeam.id)} className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded font-bold shadow-lg transition-transform active:scale-95 flex items-center gap-2 mx-auto md:mx-0"><PlusIcon /> GOL</button> )}
             </div>
             <div className="flex flex-col items-center order-1 md:order-2">
                 <div className="flex items-center gap-4 bg-black/40 px-8 py-4 rounded-lg border border-slate-700 relative">
@@ -158,20 +122,22 @@ const LiveMatchControl: React.FC<LiveMatchControlProps> = ({ match, game, onUpda
                 </div>
                 {game.phase === GamePhase.FINAL && <span className="text-xs text-yellow-500 font-bold uppercase tracking-widest mt-2">GRANDE FINAL</span>}
                 {game.phase === GamePhase.THIRD_PLACE && <span className="text-xs text-slate-400 font-bold uppercase tracking-widest mt-2">DISPUTA 3º LUGAR</span>}
+                {game.phase === GamePhase.TIE_BREAKER && <span className="text-xs text-yellow-500 font-bold uppercase tracking-widest mt-2 animate-pulse">DESEMPATE (PÊNALTIS)</span>}
             </div>
             <div className="flex-1 text-center md:text-right order-3">
                  <h3 className={`text-2xl font-bold mb-2 ${getTeamTextColor(awayTeam.name)}`}>{awayTeam.name}</h3>
-                 {!inPenaltyMode && ( <button onClick={() => openGoalModal(awayTeam.id)} className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded font-bold shadow-lg transition-transform active:scale-95 flex items-center gap-2 mx-auto md:ml-auto md:mr-0"><PlusIcon /> GOL</button> )}
+                 {showGoalButtons && ( <button onClick={() => openGoalModal(awayTeam.id)} className="bg-green-600 hover:bg-green-500 text-white px-4 py-2 rounded font-bold shadow-lg transition-transform active:scale-95 flex items-center gap-2 mx-auto md:ml-auto md:mr-0"><PlusIcon /> GOL</button> )}
             </div>
         </div>
 
-        {/* ... (Resto mantido: Pênaltis, Eventos, Modais) ... */}
         {requiresPenalties && (
             <div className="mt-6 mb-6 bg-slate-900/80 rounded-xl border border-slate-700 p-6 animate-slide-down">
                 {!inPenaltyMode ? (
                      <div className="text-center">
                          <div className="inline-flex items-center justify-center p-3 bg-slate-800 rounded-full mb-3 text-slate-400"><Target size={24} /></div>
-                         <h3 className="text-xl font-bold text-white mb-1">Empate no Tempo Normal</h3>
+                         <h3 className="text-xl font-bold text-white mb-1">
+                             {game.phase === GamePhase.TIE_BREAKER ? 'Disputa de Pênaltis' : 'Empate no Tempo Normal'}
+                         </h3>
                          <p className="text-slate-400 text-sm mb-4">A partida será decidida nos pênaltis ({maxKicks} cobranças).</p>
                          <button onClick={handleStartPenalties} disabled={isProcessing} className="bg-yellow-600 hover:bg-yellow-500 text-white px-6 py-2 rounded-full font-bold shadow-lg shadow-yellow-900/20 transition-transform active:scale-95">INICIAR PÊNALTIS</button>
                      </div>
@@ -197,7 +163,7 @@ const LiveMatchControl: React.FC<LiveMatchControlProps> = ({ match, game, onUpda
             </div>
         )}
 
-        {!inPenaltyMode && (
+        {showGoalButtons && (
             <div className="bg-slate-900/50 rounded-lg border border-slate-700/50 p-4 mb-4">
                  <h4 className="text-xs font-bold text-slate-500 uppercase tracking-wider mb-3 flex items-center gap-2"><Zap size={12} className="text-yellow-500" /> Eventos da Partida</h4>
                  {gameGoals.length === 0 ? (<div className="text-center text-slate-500 text-sm italic py-2">Nenhum gol registrado.</div>) : (
@@ -223,40 +189,7 @@ const LiveMatchControl: React.FC<LiveMatchControlProps> = ({ match, game, onUpda
             </div>
         </div>
 
-        {/* --- GOALKEEPER MODAL --- */}
-        {isGKModalOpen && (
-            <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
-                <div className="bg-slate-800 border border-slate-600 rounded-xl w-full max-w-md p-6 flex flex-col max-h-[80vh]">
-                    <div className="flex justify-between items-center mb-4">
-                        <h3 className="text-lg font-bold text-white flex items-center gap-2">
-                            <Shirt size={20} className="text-yellow-400"/> 
-                            Definir Goleiro {isSelectingFor === 'home' ? homeTeam.name : awayTeam.name}
-                        </h3>
-                        <button onClick={() => setIsGKModalOpen(false)} className="text-slate-400 hover:text-white"><X size={20}/></button>
-                    </div>
-
-                    <div className="flex gap-2 mb-4">
-                        <button onClick={() => setGkFilterMode('GK')} className={`flex-1 py-2 text-xs font-bold rounded transition-colors ${gkFilterMode === 'GK' ? 'bg-yellow-600 text-white' : 'bg-slate-700 text-slate-400'}`}>Goleiros de Ofício</button>
-                        <button onClick={() => setGkFilterMode('ALL')} className={`flex-1 py-2 text-xs font-bold rounded transition-colors ${gkFilterMode === 'ALL' ? 'bg-blue-600 text-white' : 'bg-slate-700 text-slate-400'}`}>Promover (Todos)</button>
-                    </div>
-
-                    <div className="flex-1 overflow-y-auto space-y-2 custom-scrollbar pr-2 mb-4">
-                        {getFilteredPlayersForGK().map(p => (
-                            <div key={p.id} onClick={() => handleSelectGK(p)} className="p-3 bg-slate-700/50 hover:bg-slate-700 rounded cursor-pointer flex items-center justify-between group">
-                                <div className="flex items-center gap-3">
-                                    <div className="w-8 h-8 rounded-full bg-slate-600 flex items-center justify-center text-xs font-bold text-white">{p.position.substring(0,2)}</div>
-                                    <span className="text-white font-medium text-sm">{p.name}</span>
-                                </div>
-                                <div className="text-xs text-slate-400 font-bold">OVR {p.initial_ovr}</div>
-                            </div>
-                        ))}
-                        {getFilteredPlayersForGK().length === 0 && <div className="text-center text-slate-500 py-4">Nenhum jogador encontrado.</div>}
-                    </div>
-                </div>
-            </div>
-        )}
-
-        {/* Goal Modal (Mantido) */}
+        {/* Goal Modal */}
         {scoringTeamId && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
                 <div className="bg-slate-800 border border-slate-600 rounded-lg w-full max-w-md p-6 shadow-2xl animate-scale-up">
@@ -270,7 +203,7 @@ const LiveMatchControl: React.FC<LiveMatchControlProps> = ({ match, game, onUpda
             </div>
         )}
 
-        {/* End Game Modal (Mantido) */}
+        {/* End Game Modal */}
         {isEndGameConfirmOpen && (
              <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in">
                  <div className="bg-slate-800 border border-slate-600 rounded-xl shadow-2xl w-full max-w-sm p-6 transform transition-all scale-100">

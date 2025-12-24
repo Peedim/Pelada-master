@@ -44,7 +44,6 @@ const DraftEditor: React.FC<DraftEditorProps> = ({ matchId, onBack, onPublish, i
   const getPlayersInMatch = (): Set<string> => { if (!match) return new Set(); const ids = new Set<string>(); match.teams.forEach(t => t.players.forEach(p => ids.add(p.id))); return ids; };
   const availablePlayers = allPlayers.filter(p => { const inMatch = getPlayersInMatch().has(p.id); const matchesSearch = p.name.toLowerCase().includes(searchTerm.toLowerCase()); return !inMatch && matchesSearch; });
   const getOvrColor = (ovr: number) => { if (ovr >= 80) return 'text-green-400'; if (ovr >= 70) return 'text-yellow-400'; if (ovr < 60) return 'text-red-400'; return 'text-slate-300'; };
-  const sortedGKs = useMemo(() => { if (!match) return []; return match.teams.flatMap(t => t.players.filter(p => p.position === PlayerPosition.GOLEIRO).map(p => ({ player: p, teamId: t.id }))); }, [match]);
   
   // Helper de Cores
   const getTeamStyle = (name: string) => {
@@ -69,7 +68,8 @@ const DraftEditor: React.FC<DraftEditorProps> = ({ matchId, onBack, onPublish, i
 
         <div ref={exportRef} className="bg-slate-900 p-4 rounded-xl border border-slate-800/50">
             <div className="text-center mb-6"><h2 className="text-2xl font-bold text-white tracking-tight uppercase">Escalação Oficial</h2><p className="text-slate-400 text-sm">{new Date(match.date).toLocaleDateString()} - {match.location}</p></div>
-            {sortedGKs.length > 0 && (<div className="bg-slate-800/80 border border-yellow-600/30 rounded-lg overflow-hidden mb-6 max-w-4xl mx-auto"><div className="bg-yellow-900/20 px-4 py-2 border-b border-yellow-600/30 flex items-center gap-2"><Shirt size={18} className="text-yellow-500" /><h4 className="font-bold text-white text-sm uppercase tracking-wider">Goleiros Definidos</h4></div><div className="grid grid-cols-1 sm:grid-cols-2 gap-x-4 divide-y sm:divide-y-0 divide-slate-700/50">{sortedGKs.map(({ player, teamId }) => (<div key={player.id} className="px-4 py-2 flex justify-between items-center text-sm hover:bg-slate-700/30 transition-colors"><div className="flex items-center gap-2"><span className="text-yellow-500 font-bold">{player.name} 🧤</span></div><div className="flex items-center gap-3"><span className={`font-bold ${getOvrColor(player.initial_ovr)}`}>{player.initial_ovr}</span><button onClick={() => handleRemovePlayer(teamId, player.id)} className="text-slate-600 hover:text-red-500 p-1" title="Remover"><Trash2 size={14} /></button></div></div>))}</div></div>)}
+            
+            {/* REMOVIDO TABELA SEPARADA DE GOLEIROS AQUI */}
 
             <div className={`grid grid-cols-1 md:grid-cols-2 ${match.teams.length > 2 ? 'xl:grid-cols-2' : ''} gap-6`}>
                 {match.teams.map(team => {
@@ -81,9 +81,21 @@ const DraftEditor: React.FC<DraftEditorProps> = ({ matchId, onBack, onPublish, i
                                 <div className="text-right"><span className={`block text-xl font-bold leading-none ${style.textHeader}`}>{team.avgOvr}</span><span className="text-[9px] uppercase text-slate-500 font-bold tracking-wider">MÉDIA</span></div>
                             </div>
                             <div className="divide-y divide-slate-700/50 bg-slate-800/50 flex-1">
-                                {team.players.filter(p => p.position !== PlayerPosition.GOLEIRO).map(player => (
+                                {/* REMOVIDO FILTRO DE GOLEIROS AQUI */}
+                                {team.players.map(player => (
                                     <div key={player.id} className="p-2.5 flex items-center justify-between hover:bg-slate-700/30 group">
-                                        <div className="flex items-center gap-3 overflow-hidden"><div className="w-6 h-6 rounded-full bg-slate-700 flex items-center justify-center text-[10px] font-bold text-white shrink-0">{player.position.substring(0, 2).toUpperCase()}</div><div className="min-w-0"><p className="text-sm font-medium text-slate-200 truncate">{player.name}</p>{player.playStyle && (<span className="text-[9px] text-yellow-500/80 flex items-center gap-0.5"><Zap size={8} /> {player.playStyle}</span>)}</div></div>
+                                        <div className="flex items-center gap-3 overflow-hidden">
+                                            {/* Badge de Posição com cor especial para Goleiro */}
+                                            <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold text-white shrink-0 ${player.position === PlayerPosition.GOLEIRO ? 'bg-yellow-600' : 'bg-slate-700'}`}>
+                                                {player.position.substring(0, 2).toUpperCase()}
+                                            </div>
+                                            <div className="min-w-0">
+                                                <p className={`text-sm font-medium truncate ${player.position === PlayerPosition.GOLEIRO ? 'text-yellow-500' : 'text-slate-200'}`}>
+                                                    {player.name}
+                                                </p>
+                                                {player.playStyle && (<span className="text-[9px] text-yellow-500/80 flex items-center gap-0.5"><Zap size={8} /> {player.playStyle}</span>)}
+                                            </div>
+                                        </div>
                                         <div className="flex items-center gap-3"><span className={`font-bold text-sm ${getOvrColor(player.initial_ovr)}`}>{player.initial_ovr}</span><button onClick={() => handleRemovePlayer(team.id, player.id)} className="text-slate-600 hover:text-red-500 transition-colors p-1" title="Remover"><Trash2 size={14} /></button></div>
                                     </div>
                                 ))}
