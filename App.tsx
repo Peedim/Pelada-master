@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import './index.css';
 import PlayerDashboard from './components/PlayerDashboard';
 import PlayerForm from './components/PlayerForm';
 import TeamSorter from './components/TeamSorter';
@@ -20,7 +21,7 @@ import { LayoutDashboard, Shuffle, FolderOpen, History, LogOut } from 'lucide-re
 import AuthGuard from './components/AuthGuard'; 
 import Achievements from './components/Achievements';
 import NotificationBell from './components/NotificationBell';
-import PlayerOnboarding from './components/PlayerOnboarding'; // <--- 1. IMPORT NOVO
+import PlayerOnboarding from './components/PlayerOnboarding';
 
 type AdminView = 'dashboard' | 'create' | 'edit' | 'sorter' | 'drafts' | 'draft-editor' | 'active-match' | 'history';
 

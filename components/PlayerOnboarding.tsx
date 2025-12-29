@@ -1,7 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react'; // 1. Adicionado useRef
 import { Player, PlayerFormData } from '../types';
 import { playerService } from '../services/playerService';
-import { generateAttributesFromOvr } from '../utils/attributeGenerator'; // Importar a função do Passo 1
+import { generateAttributesFromOvr } from '../utils/attributeGenerator';
 import { Shield, Target, Activity, Award, Anchor, Footprints, ArrowUp } from 'lucide-react';
 
 interface PlayerOnboardingProps {
@@ -17,7 +17,6 @@ const POSITIONS = [
 ];
 
 const PLAY_STYLES = [
-  // ESTILOS DE LINHA
   { id: 'Artilheiro', label: 'Artilheiro', desc: 'Faro de gol apurado.' },
   { id: 'Garçom', label: 'Garçom', desc: 'Mestre das assistências.' },
   { id: 'Motorzinho', label: 'Motorzinho', desc: 'Corre o campo todo sem cansar.' },
@@ -35,12 +34,29 @@ const PlayerOnboarding: React.FC<PlayerOnboardingProps> = ({ player, onComplete 
   const [position, setPosition] = useState<string>('');
   const [playStyle, setPlayStyle] = useState<string>('');
   const [loading, setLoading] = useState(false);
+  
+  // 2. Criamos a referência para o botão de confirmar
+  const confirmButtonRef = useRef<HTMLDivElement>(null);
+
+  // 3. Função inteligente para selecionar e rolar
+  const handleSelectStyle = (styleId: string) => {
+    setPlayStyle(styleId);
+    
+    // Pequeno delay para garantir que o React renderize o estado selecionado
+    setTimeout(() => {
+        if (confirmButtonRef.current) {
+            confirmButtonRef.current.scrollIntoView({ 
+                behavior: 'smooth', 
+                block: 'end' // Rola até o final do bloco aparecer
+            });
+        }
+    }, 100);
+  };
 
   const handleSave = async () => {
     if (!position || !playStyle) return;
     setLoading(true);
     try {
-      // Verifica se precisa gerar atributos (se estiverem zerados ou nulos)
       let finalAttributes = {
           pace: player.attributes.pace,
           shooting: player.attributes.shooting,
@@ -51,7 +67,6 @@ const PlayerOnboarding: React.FC<PlayerOnboardingProps> = ({ player, onComplete 
       const totalAttr = (player.attributes.pace || 0) + (player.attributes.shooting || 0);
       
       if (totalAttr === 0 || !player.attributes.pace) {
-          // GERA AUTOMATICAMENTE AGORA!
           finalAttributes = generateAttributesFromOvr(player.initial_ovr, position);
       }
 
@@ -82,7 +97,8 @@ const PlayerOnboarding: React.FC<PlayerOnboardingProps> = ({ player, onComplete 
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-900 flex items-center justify-center p-4">
-      <div className="max-w-md w-full bg-slate-800 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+      {/* Mudei max-h-[90vh] para max-h-[90dvh] para corrigir altura em mobile navegadores */}
+      <div className="max-w-md w-full bg-slate-800 border border-slate-700 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] sm:max-h-[90dvh]">
         <div className="p-6 bg-slate-900/50 border-b border-slate-700 text-center">
           <h1 className="text-2xl font-black text-white uppercase tracking-tighter mb-1">Identidade do Jogador</h1>
           <p className="text-sm text-slate-400">Olá, <span className="text-emerald-400 font-bold">{player.name}</span>! Vamos finalizar o cadastro.</p>
@@ -110,7 +126,8 @@ const PlayerOnboarding: React.FC<PlayerOnboardingProps> = ({ player, onComplete 
               <h2 className="text-lg font-bold text-white mb-4 flex items-center gap-2"><Award className="text-yellow-500" /> Qual seu estilo de jogo?</h2>
               <div className="grid grid-cols-2 gap-2">
                 {PLAY_STYLES.map((style) => (
-                    <button key={style.id} onClick={() => setPlayStyle(style.id)} className={`p-3 rounded-lg border text-left transition-all ${playStyle === style.id ? 'bg-yellow-500/10 border-yellow-500 text-white' : 'bg-slate-700/30 border-slate-700 text-slate-300 hover:border-slate-500'}`}>
+                    // 4. Usamos a nova função handleSelectStyle aqui
+                    <button key={style.id} onClick={() => handleSelectStyle(style.id)} className={`p-3 rounded-lg border text-left transition-all ${playStyle === style.id ? 'bg-yellow-500/10 border-yellow-500 text-white' : 'bg-slate-700/30 border-slate-700 text-slate-300 hover:border-slate-500'}`}>
                       <span className="block font-bold text-sm">{style.label}</span><span className="text-[10px] text-slate-500">{style.desc}</span>
                     </button>
                 ))}
@@ -119,7 +136,8 @@ const PlayerOnboarding: React.FC<PlayerOnboardingProps> = ({ player, onComplete 
           )}
         </div>
 
-        <div className="p-4 border-t border-slate-700 bg-slate-900/50 flex justify-between items-center">
+        {/* 5. Adicionei a ref neste container do rodapé */}
+        <div ref={confirmButtonRef} className="p-4 border-t border-slate-700 bg-slate-900/50 flex justify-between items-center transition-all">
             {step === 2 ? (<button onClick={() => setStep(1)} className="text-slate-400 hover:text-white text-sm font-bold px-4 py-2">Voltar</button>) : (<div />)}
             {step === 1 ? (
                 <button disabled={!position} onClick={() => setStep(2)} className="bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed text-slate-900 font-bold py-2 px-6 rounded-lg transition-all flex items-center gap-2">Próximo <ArrowUp size={16} className="rotate-90" /></button>

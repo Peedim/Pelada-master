@@ -132,18 +132,7 @@ export const ACHIEVEMENTS_LIST: Achievement[] = [
   */
   
   // --- Mantenha a lista atual abaixo, você pode ir adicionando imageUrl nelas aos poucos ---
-  // 1. FUNDADOR (Honra)
-  {
-    id: 'special_founder', 
-    category: 'Especiais', 
-    title: 'Sócio Fundador', 
-    description: 'Estava lá quando tudo era mato. Membro original.',
-    icon: Crown, 
-    level: 'Elite', 
-    targetValue: 1,
-    condition: () => false, // Só manual!
-    progress: () => 0
-  },
+
   {
     id: 'escolinha_veganinho', 
     category: 'Especiais', 
@@ -151,6 +140,18 @@ export const ACHIEVEMENTS_LIST: Achievement[] = [
     description: '5 Gols de fora da área com a trivela do Vegano',
     icon: Crown,
     imageUrl: '/badges/escolinha_veganinho.webp', 
+    level: 'Elite', 
+    targetValue: 1,
+    condition: () => false, // Só manual!
+    progress: () => 0
+  },
+  {
+    id: '1gol', 
+    category: 'Especiais', 
+    title: 'Teste', 
+    description: 'Teste',
+    icon: Crown,
+    imageUrl: '/badges/vit/100vit.png', 
     level: 'Elite', 
     targetValue: 1,
     condition: () => false, // Só manual!
@@ -172,22 +173,22 @@ export const ACHIEVEMENTS_LIST: Achievement[] = [
   // -------GOLS-------
   {
     id: 'goal_1', category: 'Gols', title: 'O Primeiro Grito', description: 'Marcar o primeiro gol.',
-    icon: Flame, level: 'Bronze', targetValue: 1,
+    icon: Flame, imageUrl: '/badges/gol/1gol.png', level: 'Bronze', targetValue: 1,
     condition: (s) => s.totalGoals >= 1, progress: (s) => Math.min(100, (s.totalGoals / 1) * 100)
   },
   {
     id: 'goal_10', category: 'Gols', title: 'Faro de Gol', description: 'Marcar 10 gols no total.',
-    icon: Flame, level: 'Prata', targetValue: 10,
+    icon: Flame, imageUrl: '/badges/gol/10gols.png', level: 'Prata', targetValue: 10,
     condition: (s) => s.totalGoals >= 10, progress: (s) => Math.min(100, (s.totalGoals / 10) * 100)
   },
   {
     id: 'goal_50', category: 'Gols', title: 'Matador Nato', description: 'Alcançar a marca de 50 gols.',
-    icon: Target, level: 'Esmeralda', targetValue: 50,
+    icon: Target, imageUrl: '/badges/gol/50gols.png', level: 'Esmeralda', targetValue: 50,
     condition: (s) => s.totalGoals >= 50, progress: (s) => Math.min(100, (s.totalGoals / 50) * 100)
   },
   {
     id: 'goal_100', category: 'Gols', title: 'Lenda da Área', description: 'O centésimo gol da carreira!',
-    icon: Crown, level: 'Elite', targetValue: 100,
+    icon: Crown, imageUrl: '/badges/gol/100gols.png', level: 'Elite', targetValue: 100,
     condition: (s) => s.totalGoals >= 100, progress: (s) => Math.min(100, (s.totalGoals / 100) * 100)
   },
   {
@@ -226,22 +227,22 @@ export const ACHIEVEMENTS_LIST: Achievement[] = [
   // --- ASSISTÊNCIAS ---
   {
     id: 'assist_1', category: 'Assistências', title: 'Toca pro Pai', description: 'Dar a primeira assistência.',
-    icon: Zap, level: 'Bronze', targetValue: 1,
+    icon: Zap, imageUrl: '/badges/assists/1assist.png', level: 'Bronze', targetValue: 1,
     condition: (s) => s.totalAssists >= 1, progress: (s) => Math.min(100, (s.totalAssists / 1) * 100)
   },
   {
     id: 'assist_10', category: 'Assistências', title: 'Garçom', description: 'Servir os companheiros 10 vezes.',
-    icon: Medal, level: 'Prata', targetValue: 10,
+    icon: Medal, imageUrl: '/badges/assists/10assists.png', level: 'Prata', targetValue: 10,
     condition: (s) => s.totalAssists >= 10, progress: (s) => Math.min(100, (s.totalAssists / 10) * 100)
   },
   {
     id: 'assist_50', category: 'Assistências', title: 'Maestro', description: '50 assistências acumuladas.',
-    icon: Star, level: 'Esmeralda', targetValue: 50,
+    icon: Star, imageUrl: '/badges/assists/50assists.png', level: 'Esmeralda', targetValue: 50,
     condition: (s) => s.totalAssists >= 50, progress: (s) => Math.min(100, (s.totalAssists / 50) * 100)
   },
   {
     id: 'assist_100', category: 'Assistências', title: 'O Visionário', description: '100 assistências na carreira.',
-    icon: Star, level: 'Elite', targetValue: 100,
+    icon: Star, imageUrl: '/badges/assists/100assists.png', level: 'Elite', targetValue: 100,
     condition: (s) => s.totalAssists >= 100, progress: (s) => Math.min(100, (s.totalAssists / 100) * 100)
   },
   {
@@ -269,13 +270,13 @@ export const ACHIEVEMENTS_LIST: Achievement[] = [
 
   // --- DEFESA ---
   {
-    id: 'cs_1', category: 'Defesa', title: 'Cadeado', description: 'Sair de campo sem sofrer gols (Clean Sheet).',
-    icon: Shield, level: 'Bronze', targetValue: 1,
+    id: 'cs_1', category: 'Defesa', title: 'Cadeado', description: 'Uma partida sem sofrer gols (Clean Sheet).',
+    icon: Shield, imageUrl: '/badges/cs/1cs.png', level: 'Bronze', targetValue: 1,
     condition: (s) => s.totalCleanSheets >= 1, progress: (s) => Math.min(100, (s.totalCleanSheets / 1) * 100)
   },
   {
     id: 'cs_10', category: 'Defesa', title: 'Segurança Máxima', description: '10 jogos sem ser vazado.',
-    icon: Shield, level: 'Prata', targetValue: 10,
+    icon: Shield, imageUrl: '/badges/cs/10cs.png', level: 'Prata', targetValue: 10,
     condition: (s) => s.totalCleanSheets >= 10, progress: (s) => Math.min(100, (s.totalCleanSheets / 10) * 100)
   },
   {
@@ -285,12 +286,12 @@ export const ACHIEVEMENTS_LIST: Achievement[] = [
   },
   {
     id: 'cs_50', category: 'Defesa', title: 'Muralha', description: '50 Clean Sheets na carreira.',
-    icon: Shield, level: 'Esmeralda', targetValue: 50,
+    icon: Shield, imageUrl: '/badges/cs/50cs.png', level: 'Esmeralda', targetValue: 50,
     condition: (s) => s.totalCleanSheets >= 50, progress: (s) => Math.min(100, (s.totalCleanSheets / 50) * 100)
   },
   {
     id: 'cs_100', category: 'Defesa', title: 'Intransponível', description: '100 jogos sem sofrer gols.',
-    icon: Shield, level: 'Elite', targetValue: 100,
+    icon: Shield, imageUrl: '/badges/cs/100cs.png', level: 'Elite', targetValue: 100,
     condition: (s) => s.totalCleanSheets >= 100, progress: (s) => Math.min(100, (s.totalCleanSheets / 100) * 100)
   },
   
@@ -313,13 +314,13 @@ export const ACHIEVEMENTS_LIST: Achievement[] = [
 
   // --- VITÓRIAS & TÍTULOS ---
   {
-    id: 'win_1', category: 'Vitórias', title: 'Pé Quente', description: 'Vencer a primeira partida.',
-    icon: Trophy, level: 'Bronze', targetValue: 1,
+    id: 'win_1', category: 'Vitórias', title: 'A primeira', description: 'Vencer a primeira partida.',
+    icon: Trophy, imageUrl: '/badges/vit/1vit.png', level: 'Bronze', targetValue: 1,
     condition: (s) => s.totalWins >= 1, progress: (s) => Math.min(100, (s.totalWins / 1) * 100)
   },
   {
     id: 'win_10', category: 'Vitórias', title: 'Vencedor', description: '10 vitórias na conta.',
-    icon: Trophy, level: 'Prata', targetValue: 10,
+    icon: Trophy, imageUrl: '/badges/vit/10vit.png', level: 'Prata', targetValue: 10,
     condition: (s) => s.totalWins >= 10, progress: (s) => Math.min(100, (s.totalWins / 10) * 100)
   },
   {
@@ -334,12 +335,12 @@ export const ACHIEVEMENTS_LIST: Achievement[] = [
   },
   {
     id: 'win_50', category: 'Vitórias', title: 'Invencível', description: '50 vitórias conquistadas.',
-    icon: Trophy, level: 'Esmeralda', targetValue: 50,
+    icon: Trophy, imageUrl: '/badges/vit/50vit.png', level: 'Esmeralda', targetValue: 50,
     condition: (s) => s.totalWins >= 50, progress: (s) => Math.min(100, (s.totalWins / 50) * 100)
   },
   {
-    id: 'win_100', category: 'Vitórias', title: 'O Conquistador', description: '100 vitórias. Histórico.',
-    icon: Trophy, level: 'Elite', targetValue: 100,
+    id: 'win_100', category: 'Vitórias', title: 'O Conquistador', description: '100 vitórias conquistadas.',
+    icon: Trophy, imageUrl: '/badges/vit/100vit.png', level: 'Elite', targetValue: 100,
     condition: (s) => s.totalWins >= 100, progress: (s) => Math.min(100, (s.totalWins / 100) * 100)
   },
   {
@@ -350,23 +351,23 @@ export const ACHIEVEMENTS_LIST: Achievement[] = [
 
   // --- FIDELIDADE ---
   {
-    id: 'games_1', category: 'Fidelidade', title: 'A Estreia', description: 'Completar o primeiro jogo.',
-    icon: Calendar, level: 'Bronze', targetValue: 1,
+    id: 'games_1', category: 'Fidelidade', title: 'A Estreia', description: 'Participar do primeiro baba.',
+    icon: Calendar, imageUrl: '/badges/part/1part.png', level: 'Bronze', targetValue: 1,
     condition: (s) => s.totalMatches >= 1, progress: (s) => Math.min(100, (s.totalMatches / 1) * 100)
   },
   {
-    id: 'games_50', category: 'Fidelidade', title: 'De Carteirinha', description: '50 jogos disputados.',
-    icon: Calendar, level: 'Esmeralda', targetValue: 50,
+    id: 'games_50', category: 'Fidelidade', title: 'De Carteirinha', description: '50 babas disputados.',
+    icon: Calendar, imageUrl: '/badges/part/50part.png', level: 'Esmeralda', targetValue: 50,
     condition: (s) => s.totalMatches >= 50, progress: (s) => Math.min(100, (s.totalMatches / 50) * 100)
   },
   {
-    id: 'games_10', category: 'Fidelidade', title: 'Confirmado', description: '10 eventos disputados.',
-    icon: Calendar, level: 'Prata', targetValue: 10,
+    id: 'games_10', category: 'Fidelidade', title: 'Confirmado', description: '10 babas disputados.',
+    icon: Calendar, imageUrl: '/badges/part/10part.png', level: 'Prata', targetValue: 10,
     condition: (s) => s.totalMatches >= 10, progress: (s) => Math.min(100, (s.totalMatches / 10) * 100)
   },
   {
-    id: 'games_100', category: 'Fidelidade', title: 'Patrimônio do Clube', description: '100 eventos! Você faz parte da história.',
-    icon: Calendar, level: 'Elite', targetValue: 100,
+    id: 'games_100', category: 'Fidelidade', title: 'Patrimônio do Clube', description: '100 babas! Você faz parte da história.',
+    icon: Calendar, imageUrl: '/badges/part/100part.png', level: 'Elite', targetValue: 100,
     condition: (s) => s.totalMatches >= 100, progress: (s) => Math.min(100, (s.totalMatches / 100) * 100)
   },
   // --- NOVOS: TÍTULOS DE EVENTO (CAMPEONATOS) ---
