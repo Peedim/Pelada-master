@@ -4,7 +4,7 @@ import { ACHIEVEMENTS_LIST, calculatePlayerStats, PlayerStats } from '../data/ac
 import { matchService } from '../services/matchService';
 import { rankingService } from '../services/rankingService';
 import { playerService } from '../services/playerService';
-import { Lock, Unlock, BarChart3, ArrowUpDown, Filter, Check, X, Star, Trash2, Ban } from 'lucide-react'; // Adicione Ban ou Trash2
+import { Lock, Unlock, BarChart3, ArrowUpDown, Filter, Check, X, Star, Trash2, Ban } from 'lucide-react';
 
 interface AchievementsProps {
   player: Player;
@@ -157,7 +157,7 @@ const Achievements: React.FC<AchievementsProps> = ({ player }) => {
              <button onClick={() => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')} className="flex items-center gap-1.5 text-[10px] font-bold text-slate-300 bg-slate-800 hover:bg-slate-700 px-3 py-1.5 rounded-lg border border-slate-700 transition-colors"><ArrowUpDown size={12} className="text-emerald-400" />{sortOrder === 'desc' ? 'Mais Raras' : 'Mais Comuns'}</button>
           </div>
           <div className="flex gap-2 overflow-x-auto pb-1 custom-scrollbar mask-image-horizontal">
-             {categories.map(cat => (<button key={cat} onClick={() => setSelectedCategory(cat)} className={`whitespace-nowrap px-3 py-1 rounded-full text-[10px] font-bold transition-all border ${selectedCategory === cat ? 'bg-emerald-500 text-slate-900 border-emerald-500 shadow-lg shadow-emerald-500/20' : 'bg-slate-800 text-slate-400 border-slate-700 hover:border-slate-500'}`}>{cat}</button>))}
+              {categories.map(cat => (<button key={cat} onClick={() => setSelectedCategory(cat)} className={`whitespace-nowrap px-3 py-1 rounded-full text-[10px] font-bold transition-all border ${selectedCategory === cat ? 'bg-emerald-500 text-slate-900 border-emerald-500 shadow-lg shadow-emerald-500/20' : 'bg-slate-800 text-slate-400 border-slate-700 hover:border-slate-500'}`}>{cat}</button>))}
           </div>
       </div>
 
@@ -190,7 +190,6 @@ const Achievements: React.FC<AchievementsProps> = ({ player }) => {
                                 achiev.imageUrl ? <img src={achiev.imageUrl} alt={achiev.title} className="w20 h-20 object-contain drop-shadow-md" /> : <Icon size={32} className={`${getIconStyles(achiev.level, true)}`} />
                             ) : (<Lock size={24} className="text-slate-700" />)}
                         </div>
-                        {/*<span className={`text-[10px] font-bold leading-tight line-clamp-2 px-2 text-center ${isUnlocked ? 'text-slate-300' : 'text-slate-600'}`}>{achiev.title}</span>*/} {/*Título removido para foco*/}
                         
                         {isUnlocked && <div className={`absolute -bottom-4 -right-4 w-12 h-12 blur-xl opacity-20 pointer-events-none rounded-full ${achiev.level === 'Elite' ? 'bg-yellow-500' : achiev.level === 'Esmeralda' ? 'bg-emerald-500' : achiev.level === 'Prata' ? 'bg-slate-100' : 'bg-amber-600'}`}></div>}
                     </div>

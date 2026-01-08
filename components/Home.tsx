@@ -72,8 +72,10 @@ const Home: React.FC<HomeProps> = ({ player, matches, onPlayerUpdate }) => {
       if (match.status !== MatchStatus.FINISHED) return;
       const playerTeam = match.teams.find(t => t.players.some(p => p.id === player.id));
       if (!playerTeam) return;
+      
       const playedGames = match.games.filter(g => g.status === 'FINISHED' && (g.homeTeamId === playerTeam.id || g.awayTeamId === playerTeam.id));
       gamesPlayed += playedGames.length;
+      
       playedGames.forEach(g => {
           const isHome = g.homeTeamId === playerTeam.id;
           const myScore = isHome ? g.homeScore : g.awayScore;
@@ -84,9 +86,38 @@ const Home: React.FC<HomeProps> = ({ player, matches, onPlayerUpdate }) => {
               if ((isHome ? p.homeScore : p.awayScore) > (isHome ? p.awayScore : p.homeScore)) wins++;
           }
       });
+      
       match.goals?.forEach(g => { if (g.scorerId === player.id) goals++; if (g.assistId === player.id) assists++; });
-      const standings = matchService.calculateStandings(match); 
-      if (standings[0]?.teamId === playerTeam.id) titles++;
+
+      // --- CORREÇÃO DA LÓGICA DE TÍTULOS ---
+      if (match.type === 'Quadrangular') {
+          // Se for Quadrangular, checa se ganhou a FINAL
+          const finalGame = match.games.find(g => g.phase === 'FINAL' && g.status === 'FINISHED');
+          if (finalGame) {
+              const isHome = finalGame.homeTeamId === playerTeam.id;
+              const isAway = finalGame.awayTeamId === playerTeam.id;
+              
+              if (isHome || isAway) {
+                  const pHomeScore = finalGame.homeScore;
+                  const pAwayScore = finalGame.awayScore;
+                  // Checa placar normal
+                  if (isHome && pHomeScore > pAwayScore) titles++;
+                  else if (isAway && pAwayScore > pHomeScore) titles++;
+                  // Checa pênaltis
+                  else if (pHomeScore === pAwayScore && finalGame.penaltyShootout) {
+                      const pen = finalGame.penaltyShootout;
+                      if (isHome && pen.homeScore > pen.awayScore) titles++;
+                      if (isAway && pen.awayScore > pen.homeScore) titles++;
+                  }
+              }
+          }
+      } else {
+          // Se for Triangular (Pontos Corridos), mantém a lógica antiga da tabela
+          const standings = matchService.calculateStandings(match); 
+          if (standings[0]?.teamId === playerTeam.id) titles++;
+      }
+      // -------------------------------------
+      
     });
     return { gamesPlayed, goals, assists, titles, wins };
   }, [matches, player.id]);
@@ -154,7 +185,6 @@ const Home: React.FC<HomeProps> = ({ player, matches, onPlayerUpdate }) => {
     const lastY = height - padding - ((lastPoint.ovr - minOvr) / rangeOvr) * graphHeight;
 
     // Labels Fixas para 2026 (Jan, Mar, Mai, Jul, Set, Nov)
-    // Distribuídas visualmente pelo justify-between no JSX
     const displayLabels = ["JAN", "MAR", "MAI", "JUL", "SET", "NOV"];
 
     return { pathD, lastX, lastY, displayLabels };

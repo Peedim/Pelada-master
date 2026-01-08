@@ -1,10 +1,10 @@
-import { Match, Player, MonthlyChampion } from '../types';
+import { Match, MonthlyChampion } from '../types';
 import { Trophy, Flame, Medal, Shield, Calendar, Star, Zap, Crown, Target, Activity } from 'lucide-react';
 import { matchService } from '../services/matchService';
 
 export interface Achievement {
   id: string;
-  category: 'Gols' | 'Assistências' | 'Defesa' | 'Vitórias' | 'Fidelidade' | 'Especiais'; // <--- Nova Categoria
+  category: 'Gols' | 'Assistências' | 'Defesa' | 'Vitórias' | 'Fidelidade' | 'Especiais';
   title: string;
   description: string;
   icon: any;
@@ -24,7 +24,7 @@ export interface PlayerStats {
   hatTricks: number;
   assistTricks: number;
   cleanTricks: number;
-  totalTitles: number; // <--- NOVO
+  totalTitles: number; 
   monthlyTitles_MVP: number;
   monthlyTitles_Goals: number;
   monthlyTitles_Assists: number;
@@ -35,7 +35,7 @@ export const calculatePlayerStats = (playerId: string, matches: Match[], hallOfF
   let stats: PlayerStats = {
     totalMatches: 0, totalWins: 0, totalGoals: 0, totalAssists: 0, totalCleanSheets: 0,
     hatTricks: 0, assistTricks: 0, cleanTricks: 0,
-    totalTitles: 0, // <--- NOVO
+    totalTitles: 0, 
     monthlyTitles_MVP: 0, monthlyTitles_Goals: 0, monthlyTitles_Assists: 0, monthlyTitles_Defense: 0
   };
 
@@ -49,16 +49,18 @@ export const calculatePlayerStats = (playerId: string, matches: Match[], hallOfF
     const playerTeam = match.teams.find(t => t.players.some(p => p.id === playerId));
     if (!playerTeam) return;
 
-    // --- CÁLCULO DE TÍTULO DO EVENTO ---
-    // Usa o serviço para ver quem ficou em 1º
-    const standings = matchService.calculateStandings(match);
+    // --- CÁLCULO DE TÍTULO DO EVENTO (CORRIGIDO) ---
+    // Agora usamos getFinalRankings para considerar a FINAL (Mata-mata)
+    const standings = matchService.getFinalRankings(match);
+    
+    // Se o time do jogador é o primeiro da lista retornada, ele é o campeão
     if (standings.length > 0 && standings[0].teamId === playerTeam.id) {
         stats.totalTitles++;
     }
 
     // Processar Jogos
     const games = match.games.filter(g => g.status === 'FINISHED');
-    let cleanSheetInEvent = true; // Assume true e falha se tomar gol
+    // let cleanSheetInEvent = true; 
 
     games.forEach(game => {
       // É jogo do meu time?
@@ -80,8 +82,6 @@ export const calculatePlayerStats = (playerId: string, matches: Match[], hallOfF
 
       // Clean Sheet (Por jogo para streak)
       if (oppScore === 0) {
-        // stats.totalCleanSheets++; // <-- MUDANÇA: Clean sheet conta por jogo ou por evento? 
-        // Normalmente CS é por jogo. Vamos manter por jogo para volume.
         stats.totalCleanSheets++;
         currentCleanSheetStreak++;
         if (currentCleanSheetStreak >= 3) {
@@ -90,7 +90,7 @@ export const calculatePlayerStats = (playerId: string, matches: Match[], hallOfF
         }
       } else {
         currentCleanSheetStreak = 0;
-        cleanSheetInEvent = false;
+        // cleanSheetInEvent = false;
       }
 
       // Stats Individuais
@@ -120,20 +120,6 @@ export const calculatePlayerStats = (playerId: string, matches: Match[], hallOfF
 
 
 export const ACHIEVEMENTS_LIST: Achievement[] = [
-  // EXEMPLO DE USO COM IMAGEM PERSONALIZADA:
-  /*
-  {
-    id: 'goal_100', category: 'Gols', title: 'Lenda da Área', description: 'O centésimo gol da carreira!',
-    icon: Crown, // Fallback
-    imageUrl: '/badges/lenda-ouro.png', // <--- SUA IMAGEM AQUI (PNG Transparente fica top)
-    level: 'Elite', targetValue: 100,
-    condition: (s) => s.totalGoals >= 100, progress: (s) => Math.min(100, (s.totalGoals / 100) * 100)
-  },
-  */
-  
-  // --- Mantenha a lista atual abaixo, você pode ir adicionando imageUrl nelas aos poucos ---
-
-  
   // -------Especiais-------
   {
     id: 'veganinho', 
@@ -144,7 +130,7 @@ export const ACHIEVEMENTS_LIST: Achievement[] = [
     imageUrl: '/badges/esp/veganinho.png', 
     level: 'Esmeralda', 
     targetValue: 1,
-    condition: () => false, // Só manual!
+    condition: () => false, 
     progress: () => 0
   },
   {
@@ -156,7 +142,7 @@ export const ACHIEVEMENTS_LIST: Achievement[] = [
     imageUrl: '/badges/esp/mago.png', 
     level: 'Esmeralda', 
     targetValue: 1,
-    condition: () => false, // Só manual!
+    condition: () => false, 
     progress: () => 0
   },
   {
@@ -168,19 +154,19 @@ export const ACHIEVEMENTS_LIST: Achievement[] = [
     imageUrl: '/badges/esp/patrick.png', 
     level: 'Esmeralda', 
     targetValue: 1,
-    condition: () => false, // Só manual!
+    condition: () => false, 
     progress: () => 0
   },
   {
     id: 'napoli', 
     category: 'Especiais', 
-    title: 'Perdoa o Pai', 
-    description: 'Termine a noite sem nenhuma vitória.',
+    title: 'Napoli', 
+    description: 'Jogue todas as partidas do torneio. Não vença nenhuma.',
     icon: Crown,
     imageUrl: '/badges/esp/napoli.png', 
     level: 'Esmeralda', 
     targetValue: 1,
-    condition: () => false, // Só manual!
+    condition: () => false, 
     progress: () => 0
   },
     

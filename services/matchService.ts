@@ -231,20 +231,20 @@ export const matchService = {
         
         // Só atualiza as finais se a Fase 2 acabou E se não tem um Tie Breaker pendente
         if (isPhase2Done) {
-             const activeTieBreaker = match.games.find(g => g.phase === GamePhase.TIE_BREAKER && g.status !== GameStatus.FINISHED);
-             
-             // Se tiver jogo de desempate rolando, espera ele acabar
-             if (!activeTieBreaker) {
-                const finalGame = match.games.find(g => g.phase === GamePhase.FINAL);
-                const thirdGame = match.games.find(g => g.phase === GamePhase.THIRD_PLACE);
-                
-                // Atualiza (ou re-atualiza) os times da final com base na tabela (que agora considera o desempate)
-                if (finalGame) {
-                    const standings = matchService.calculateStandings(match);
-                    await supabase.from('games').update({ home_team_id: standings[0].teamId, away_team_id: standings[1].teamId }).eq('id', finalGame.id);
-                    if (thirdGame) await supabase.from('games').update({ home_team_id: standings[2].teamId, away_team_id: standings[3].teamId }).eq('id', thirdGame.id);
-                }
-             }
+              const activeTieBreaker = match.games.find(g => g.phase === GamePhase.TIE_BREAKER && g.status !== GameStatus.FINISHED);
+              
+              // Se tiver jogo de desempate rolando, espera ele acabar
+              if (!activeTieBreaker) {
+                 const finalGame = match.games.find(g => g.phase === GamePhase.FINAL);
+                 const thirdGame = match.games.find(g => g.phase === GamePhase.THIRD_PLACE);
+                 
+                 // Atualiza (ou re-atualiza) os times da final com base na tabela (que agora considera o desempate)
+                 if (finalGame) {
+                     const standings = matchService.calculateStandings(match);
+                     await supabase.from('games').update({ home_team_id: standings[0].teamId, away_team_id: standings[1].teamId }).eq('id', finalGame.id);
+                     if (thirdGame) await supabase.from('games').update({ home_team_id: standings[2].teamId, away_team_id: standings[3].teamId }).eq('id', thirdGame.id);
+                 }
+              }
         }
     }
     return (await matchService.getById(matchId))!;
@@ -298,14 +298,74 @@ export const matchService = {
       return (await matchService.getById(matchId))!;
   },
 
+  // --- NOVA FUNÇÃO: CALCULA O RANKING REAL (Considerando Finais) ---
+  getFinalRankings: (match: Match): Standing[] => {
+      // 1. Pega a tabela de pontos (Fases 1 e 2)
+      const tableStandings = matchService.calculateStandings(match);
+      
+      // Se for Triangular, não tem final, a tabela manda
+      if (match.type === 'Triangular') return tableStandings;
+
+      // Se for Quadrangular, temos que ver quem ganhou a final
+      if (match.type === 'Quadrangular') {
+          const finalGame = match.games.find(g => g.phase === GamePhase.FINAL && g.status === GameStatus.FINISHED);
+          const thirdPlaceGame = match.games.find(g => g.phase === GamePhase.THIRD_PLACE && g.status === GameStatus.FINISHED);
+
+          let firstId = '', secondId = '', thirdId = '', fourthId = '';
+
+          // Lógica de Campeão (1º e 2º)
+          if (finalGame) {
+              let homeWon = finalGame.homeScore > finalGame.awayScore;
+              if (finalGame.homeScore === finalGame.awayScore && finalGame.penaltyShootout) {
+                  homeWon = finalGame.penaltyShootout.homeScore > finalGame.penaltyShootout.awayScore;
+              }
+              if (homeWon) { firstId = finalGame.homeTeamId; secondId = finalGame.awayTeamId; }
+              else { firstId = finalGame.awayTeamId; secondId = finalGame.homeTeamId; }
+          } else {
+              // Se a final não acabou, usa a tabela
+              firstId = tableStandings[0]?.teamId;
+              secondId = tableStandings[1]?.teamId;
+          }
+
+          // Lógica de 3º e 4º
+          if (thirdPlaceGame) {
+              let homeWon = thirdPlaceGame.homeScore > thirdPlaceGame.awayScore;
+              if (thirdPlaceGame.homeScore === thirdPlaceGame.awayScore && thirdPlaceGame.penaltyShootout) {
+                  homeWon = thirdPlaceGame.penaltyShootout.homeScore > thirdPlaceGame.penaltyShootout.awayScore;
+              }
+              if (homeWon) { thirdId = thirdPlaceGame.homeTeamId; fourthId = thirdPlaceGame.awayTeamId; }
+              else { thirdId = thirdPlaceGame.awayTeamId; fourthId = thirdPlaceGame.homeTeamId; }
+          } else {
+              thirdId = tableStandings[2]?.teamId;
+              fourthId = tableStandings[3]?.teamId;
+          }
+
+          // Reconstrói a lista ordenada pelo resultado real
+          const ranked: Standing[] = [];
+          const addIfExists = (id: string) => {
+              const s = tableStandings.find(t => t.teamId === id);
+              if (s) ranked.push(s);
+          };
+          addIfExists(firstId);
+          addIfExists(secondId);
+          addIfExists(thirdId);
+          addIfExists(fourthId);
+          
+          return ranked;
+      }
+      return tableStandings;
+  },
+
   finishMatch: async (matchId: string): Promise<Match> => {
     await supabase.from('matches').update({ status: MatchStatus.FINISHED }).eq('id', matchId);
     const match = await matchService.getById(matchId);
-    if (!match) return match!; // Evita erro se null
+    if (!match) return match!; 
 
-    const standings = matchService.calculateStandings(match);
-    const championId = standings[0]?.teamId;
-    const lastPlaceId = standings[standings.length - 1]?.teamId;
+    // CORREÇÃO: Usa getFinalRankings em vez de calculateStandings para definir o campeão
+    const finalRankings = matchService.getFinalRankings(match);
+    const championId = finalRankings[0]?.teamId;
+    const lastPlaceId = finalRankings[finalRankings.length - 1]?.teamId;
+    
     const allGoals = match.goals || [];
     
     const playerStats: Record<string, any> = {};
@@ -356,6 +416,7 @@ export const matchService = {
             dPace += (s.wins * 0.3);
             dPace += (s.losses * -0.2);
 
+            // Usa o championId correto agora
             if (team.id === championId) {
                 dPace += (1.0 * w.pace);
                 dShoot += (1.0 * w.shooting);
@@ -449,10 +510,8 @@ export const matchService = {
         const winnerIndex = sortedStandings.findIndex(s => s.teamId === winnerId);
         const loserIndex = sortedStandings.findIndex(s => s.teamId === loserId);
 
-        // Se o perdedor estiver na frente do vencedor na tabela, inverte as posições (ou move o vencedor para cima)
         if (winnerIndex !== -1 && loserIndex !== -1 && loserIndex < winnerIndex) {
             const [winner] = sortedStandings.splice(winnerIndex, 1);
-            // Insere o vencedor logo na posição onde estava o perdedor
             sortedStandings.splice(loserIndex, 0, winner);
         }
     }

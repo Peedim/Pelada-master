@@ -108,7 +108,11 @@ const Career: React.FC<CareerProps> = ({ currentUser }) => {
           });
       }
 
-      const standings = matchService.calculateStandings(match);
+      // --- CORREÇÃO AQUI ---
+      // Antes: matchService.calculateStandings(match) -> Olhava só pontos
+      // Agora: matchService.getFinalRankings(match) -> Olha quem ganhou a final
+      const standings = matchService.getFinalRankings(match);
+      
       const myRank = standings.findIndex(s => s.teamId === myTeamId) + 1;
       const championName = standings[0]?.teamName;
       const isChampion = myRank === 1;
