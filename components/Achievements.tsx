@@ -1,19 +1,18 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { Player } from '../types';
+import React, { useState, useMemo } from 'react';
+import { Player, Match } from '../types';
 import { ACHIEVEMENTS_LIST, calculatePlayerStats, PlayerStats } from '../data/achievements';
-import { matchService } from '../services/matchService';
-import { rankingService } from '../services/rankingService';
 import { playerService } from '../services/playerService';
-import { Lock, Unlock, BarChart3, ArrowUpDown, Filter, Check, X, Star, Trash2, Ban } from 'lucide-react';
+import { Lock, Unlock, BarChart3, ArrowUpDown, Filter, Check, X, Star, Ban } from 'lucide-react';
 
 interface AchievementsProps {
   player: Player;
+  matches: Match[]; // Recebe do pai
+  hallOfFame: any[]; // Recebe do pai
+  manualUnlocks: string[]; // Recebe do pai
 }
 
-const Achievements: React.FC<AchievementsProps> = ({ player }) => {
-  const [stats, setStats] = useState<PlayerStats | null>(null);
-  const [manualUnlocks, setManualUnlocks] = useState<string[]>([]);
-  const [loading, setLoading] = useState(true);
+const Achievements: React.FC<AchievementsProps> = ({ player, matches, hallOfFame, manualUnlocks }) => {
+  // Não tem mais state de loading nem stats (stats é calculado via memo)
   
   const [activeTooltip, setActiveTooltip] = useState<string | null>(null);
   const [confirmingId, setConfirmingId] = useState<string | null>(null);
@@ -23,32 +22,17 @@ const Achievements: React.FC<AchievementsProps> = ({ player }) => {
   const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>('desc');
   const [selectedCategory, setSelectedCategory] = useState<string>('Todos');
 
-  useEffect(() => { loadData(); }, [player]);
+  // CÁLCULO OTIMIZADO: Roda instantaneamente quando 'matches' muda, sem rede.
+  const stats = useMemo(() => {
+      return calculatePlayerStats(player.id, matches, hallOfFame);
+  }, [player.id, matches, hallOfFame]);
 
-  const loadData = async () => {
-    setLoading(true);
-    try {
-      const [matches, hall, manualList] = await Promise.all([
-        matchService.getAll(),
-        rankingService.getHallOfFame(),
-        playerService.getManualAchievements(player.id)
-      ]);
-      const calculatedStats = calculatePlayerStats(player.id, matches, hall);
-      setStats(calculatedStats);
-      setManualUnlocks(manualList);
-    } catch (error) { console.error(error); } finally { setLoading(false); }
-  };
-
-  // Função genérica: Equipar (string) ou Remover (null)
   const handleToggleAchievement = async (achievId: string, isEquipping: boolean) => {
       setIsSaving(true);
       try {
           if (!player.id) throw new Error("ID inválido");
-          
-          const newValue = isEquipping ? achievId : null; // Se for equipar, manda ID. Se for remover, manda null.
-          
+          const newValue = isEquipping ? achievId : null;
           await playerService.updateFeaturedAchievement(player.id, newValue);
-          
           setFeaturedId(newValue);
           setConfirmingId(null);
           setActiveTooltip(null);
@@ -88,7 +72,6 @@ const Achievements: React.FC<AchievementsProps> = ({ player }) => {
   };
 
   const filteredAndSortedList = useMemo(() => {
-      if (!stats) return [];
       let list = [...ACHIEVEMENTS_LIST];
       if (selectedCategory !== 'Todos') list = list.filter(a => a.category === selectedCategory);
       
@@ -104,8 +87,6 @@ const Achievements: React.FC<AchievementsProps> = ({ player }) => {
       });
       return list;
   }, [stats, selectedCategory, sortOrder, manualUnlocks]);
-
-  if (loading || !stats) return <div className="flex justify-center py-20"><div className="w-8 h-8 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div></div>;
 
   const totalAchievements = ACHIEVEMENTS_LIST.length;
   const unlockedAchievements = ACHIEVEMENTS_LIST.filter(a => a.condition(stats) || manualUnlocks.includes(a.id)).length;
@@ -201,7 +182,6 @@ const Achievements: React.FC<AchievementsProps> = ({ player }) => {
                         <div className="relative z-10 overflow-hidden rounded-xl">
                             {isConfirming ? (
                                 <div className="p-3 flex flex-col items-center bg-slate-900/95 backdrop-blur-md animate-fade-in text-center h-full">
-                                    {/* MUDANÇA DE UI: Se já estiver equipado, mostra opção de Remover */}
                                     <span className="text-xs font-bold text-white mb-1">
                                         {isEquipped ? "Remover Destaque?" : "Ostentar Conquista?"}
                                     </span>
@@ -213,11 +193,9 @@ const Achievements: React.FC<AchievementsProps> = ({ player }) => {
                                     <div className="flex gap-2 w-full">
                                         <button onClick={(e) => { e.stopPropagation(); setConfirmingId(null); }} className="flex-1 py-1.5 bg-slate-700 hover:bg-slate-600 text-white rounded text-[10px] font-bold"><X size={12} className="mx-auto" /></button>
                                         
-                                        {/* Botão Dinâmico: Confirmar (Verde) ou Remover (Vermelho) */}
                                         <button 
                                             onClick={(e) => { 
                                                 e.stopPropagation(); 
-                                                // Se já equipado, passa 'false' para desequipar. Se não, 'true' para equipar.
                                                 handleToggleAchievement(achiev.id, !isEquipped); 
                                             }} 
                                             disabled={isSaving} 

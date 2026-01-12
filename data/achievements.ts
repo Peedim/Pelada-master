@@ -169,7 +169,51 @@ export const ACHIEVEMENTS_LIST: Achievement[] = [
     condition: () => false, 
     progress: () => 0
   },
-    
+  {
+    id: 'saulo', 
+    category: 'Especiais', 
+    title: 'Gol de Saulo', 
+    description: 'Para o artilheiro... do time adversário (Gol contra)',
+    icon: Crown,
+    level: 'Esmeralda', 
+    targetValue: 1,
+    condition: () => false, 
+    progress: () => 0
+  },
+  {
+    id: 'rogerioceni', 
+    category: 'Especiais', 
+    title: 'Rogério Ceni', 
+    description: 'Goleiro fazendo gol de falta. Respeita a história! (Exclusiva Goleiros)',
+    icon: Crown,
+    level: 'Esmeralda', 
+    targetValue: 1,
+    condition: () => false, 
+    progress: () => 0
+  },
+  {
+    id: 'higuita', 
+    category: 'Especiais', 
+    title: 'Higuita', 
+    description: 'Defesa escorpião. Só para goleiros malucos (Exclusiva Goleiros)',
+    icon: Crown,
+    level: 'Esmeralda', 
+    targetValue: 1,
+    condition: () => false, 
+    progress: () => 0
+  },
+   {
+    id: 'arcadenoe', 
+    category: 'Especiais', 
+    title: 'Arcade Noé', 
+    description: 'Participou de 100% dos gols do time e ainda foi campeão?. Basicamente carregou os animais nas costas!',
+    icon: Crown,
+    level: 'Esmeralda', 
+    targetValue: 1,
+    condition: () => false, 
+    progress: () => 0
+  },
+  
   // -------GOLS-------
   {
     id: 'goal_1', 

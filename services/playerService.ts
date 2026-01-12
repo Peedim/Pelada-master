@@ -1,5 +1,7 @@
 import { supabase } from './supabaseClient';
-import { Player, PlayerFormData, PlayerPosition } from '../types';
+import { Player, PlayerFormData, PlayerPosition, RankingsData } from '../types';
+import { matchService } from './matchService';
+import { rankingService } from './rankingService';
 
 export interface PlayerUpdateSimulation {
   player: Player;
@@ -30,6 +32,53 @@ export const calculateWeightedOvr = (position: string, attr: { pace: number, sho
          (attr.shooting * w.shooting) + 
          (attr.passing * w.passing) + 
          (attr.defending * w.defending);
+};
+
+// --- HELPER: Encontrar Campeão com Desempate e Filtros ---
+const findChampion = (
+    data: RankingsData, 
+    players: Player[], 
+    category: 'wins' | 'goals' | 'assists' | 'cleanSheets'
+) => {
+    // 1. Transforma em lista enriquecida com dados do jogador
+    const list = Object.values(data).map(stat => {
+        const player = players.find(p => p.id === stat.playerId);
+        return {
+            ...stat,
+            position: player?.position || '',
+            // Calcula participações para desempate de MVP
+            contributions: stat.goals + stat.assists 
+        };
+    });
+
+    // 2. Filtra (Remove Zeros e Aplica Regra da Muralha)
+    const filtered = list.filter(item => {
+        if (item[category] === 0) return false;
+        
+        // Regra da Muralha: Só Defensor e Goleiro
+        if (category === 'cleanSheets') {
+            return ['Defensor', 'Goleiro', 'Zagueiro'].includes(item.position);
+        }
+        return true;
+    });
+
+    // 3. Ordena com Critérios de Desempate
+    filtered.sort((a, b) => {
+        // Critério 1: O valor principal (quem tem mais)
+        const diff = b[category] - a[category];
+        if (diff !== 0) return diff;
+
+        // Critério 2: Desempate
+        if (category === 'wins') return b.contributions - a.contributions; // MVP -> Gols + Assists
+        if (category === 'goals') return b.wins - a.wins; // Artilheiro -> Vitórias
+        if (category === 'assists') return b.wins - a.wins; // Garçom -> Vitórias
+        if (category === 'cleanSheets') return b.wins - a.wins; // Muralha -> Vitórias
+
+        return 0;
+    });
+
+    // Retorna o Top 1 ou null se ninguém pontuou
+    return filtered.length > 0 ? filtered[0] : null;
 };
 
 export const playerService = {
@@ -137,12 +186,43 @@ export const playerService = {
 
   processMonthlyUpdate: async (): Promise<string> => {
       console.log("Iniciando Virada de Mês...");
-      const { data: players } = await supabase.from('players').select('*');
-      if (!players) return "Erro ao buscar jogadores";
+      
+      // 1. Busca Dados Necessários
+      const { data: playersData } = await supabase.from('players').select('*');
+      if (!playersData) return "Erro ao buscar jogadores";
+      
+      // Mapeia para o formato Player esperado pelo service
+      const players = playersData.map((p: any) => ({ ...p, id: p.id, position: p.position })); 
+      const allMatches = await matchService.getAll();
 
+      // 2. Calcula Rankings do Mês Atual (Memória)
+      const monthlyStats = rankingService.getCurrentMonthRankings(players as Player[], allMatches);
+
+      // 3. Determina os Campeões (Com Filtro e Desempate)
+      const mvp = findChampion(monthlyStats, players as Player[], 'wins');
+      const artilheiro = findChampion(monthlyStats, players as Player[], 'goals');
+      const garcom = findChampion(monthlyStats, players as Player[], 'assists');
+      const muralha = findChampion(monthlyStats, players as Player[], 'cleanSheets');
+
+      // 4. Salva no Hall da Fama
+      const now = new Date();
+      // Gera chave do mês (ex: "JAN", "FEV")
+      const monthKey = now.toLocaleString('pt-BR', { month: 'short' }).toUpperCase().replace('.', '');
+      
+      const championsToSave = [];
+      if (mvp) championsToSave.push({ category: 'wins', playerId: mvp.playerId, value: mvp.wins });
+      if (artilheiro) championsToSave.push({ category: 'goals', playerId: artilheiro.playerId, value: artilheiro.goals });
+      if (garcom) championsToSave.push({ category: 'assists', playerId: garcom.playerId, value: garcom.assists });
+      if (muralha) championsToSave.push({ category: 'clean_sheets', playerId: muralha.playerId, value: muralha.cleanSheets });
+
+      if (championsToSave.length > 0) {
+          await rankingService.saveChampions(monthKey, championsToSave);
+      }
+
+      // 5. Aplica Evolução de OVR (Lógica original)
       let count = 0;
       
-      for (const p of players) {
+      for (const p of playersData) {
           const gainPace = Math.round(Number(p.pace_acc || 0) / 4);
           const gainShoot = Math.round(Number(p.shooting_acc || 0) / 4);
           const gainPass = Math.round(Number(p.passing_acc || 0) / 4);
@@ -174,7 +254,7 @@ export const playerService = {
               monthly_delta: 0, ovr_history: history
           }).eq('id', p.id);
       }
-      return `Virada de mês concluída! ${count} jogadores atualizaram o OVR.`;
+      return `Virada de mês concluída! Hall da Fama (${monthKey}) salvo e ${count} jogadores atualizaram o OVR.`;
   },
 
   simulateMonthlyUpdate: async (): Promise<PlayerUpdateSimulation[]> => {

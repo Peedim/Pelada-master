@@ -1,16 +1,16 @@
-import React, { useEffect, useState, useMemo, useRef } from 'react';
-import { Match, Player, MatchStatus, Game, GamePhase } from '../types';
+import React, { useState, useMemo, useRef } from 'react';
+import { Match, Player, Game, GamePhase } from '../types';
 import { matchService } from '../services/matchService';
-import { Trophy, Calendar, ChevronDown, ChevronUp, Zap, Image as ImageIcon, Download, Upload, Loader2, Camera, Medal, Star, Activity, Shield, Users } from 'lucide-react';
+import { Trophy, ChevronDown, ChevronUp, Zap, Image as ImageIcon, Download, Loader2, Camera, Medal, Star, Activity, Users } from 'lucide-react';
 import { saveAs } from 'file-saver';
 
 interface CareerProps {
   currentUser: Player;
+  matches: Match[]; // Agora recebe as partidas do pai (App.tsx)
 }
 
-const Career: React.FC<CareerProps> = ({ currentUser }) => {
-  const [matches, setMatches] = useState<Match[]>([]);
-  const [loading, setLoading] = useState(true);
+const Career: React.FC<CareerProps> = ({ currentUser, matches: allMatches }) => {
+  // Removido estado de 'matches' e 'loading' locais, pois já vem pronto do pai
   
   // Controle de Expansão e Abas
   const [expandedMatchId, setExpandedMatchId] = useState<string | null>(null);
@@ -21,40 +21,32 @@ const Career: React.FC<CareerProps> = ({ currentUser }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [uploadTargetMatchId, setUploadTargetMatchId] = useState<string | null>(null);
 
-  useEffect(() => {
-    loadCareer();
-  }, []);
-
-  const loadCareer = async () => {
-    setLoading(true);
-    const allMatches = await matchService.getAll();
-    const history = allMatches
-      .filter(m => m.status === MatchStatus.FINISHED)
-      .filter(m => m.teams.some(t => t.players.some(p => p.id === currentUser.id)))
-      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    
-    setMatches(history);
-    setLoading(false);
-  };
+  // Filtra as partidas relevantes para este usuário usando os dados recebidos
+  const myHistory = useMemo(() => {
+    return allMatches
+        // Otimização: Filtramos o finished primeiro que é string simples
+        .filter(m => m.status === 'FINISHED') 
+        .filter(m => m.teams.some(t => t.players.some(p => p.id === currentUser.id)))
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+  }, [allMatches, currentUser.id]);
 
   const groupedMatches = useMemo(() => {
     const groups: Record<string, Match[]> = {};
-    matches.forEach(match => {
+    myHistory.forEach(match => {
       const date = new Date(match.date);
       const monthYear = date.toLocaleString('pt-BR', { month: 'long' }).toUpperCase();
       if (!groups[monthYear]) groups[monthYear] = [];
       groups[monthYear].push(match);
     });
     return groups;
-  }, [matches]);
+  }, [myHistory]);
 
-  // Função para abrir/fechar o acordeão e resetar a aba
   const toggleMatch = (matchId: string) => {
       if (expandedMatchId === matchId) {
           setExpandedMatchId(null);
       } else {
           setExpandedMatchId(matchId);
-          setActiveTab('matches'); // Sempre volta para a aba principal ao abrir
+          setActiveTab('matches'); 
       }
   };
 
@@ -64,14 +56,6 @@ const Career: React.FC<CareerProps> = ({ currentUser }) => {
       if (teamName.includes('Vermelho')) return 'bg-red-600 border-red-500';
       if (teamName.includes('Azul')) return 'bg-blue-600 border-blue-500';
       return 'bg-slate-700 border-slate-600';
-  };
-
-  const getTeamTextColor = (teamName: string) => {
-    if (teamName.includes('Branco')) return 'text-slate-200';
-    if (teamName.includes('Preto')) return 'text-slate-400';
-    if (teamName.includes('Vermelho')) return 'text-red-500';
-    if (teamName.includes('Azul')) return 'text-blue-500';
-    return 'text-white';
   };
 
   const getPlayerName = (match: Match, playerId: string) => {
@@ -108,11 +92,8 @@ const Career: React.FC<CareerProps> = ({ currentUser }) => {
           });
       }
 
-      // --- CORREÇÃO AQUI ---
-      // Antes: matchService.calculateStandings(match) -> Olhava só pontos
-      // Agora: matchService.getFinalRankings(match) -> Olha quem ganhou a final
+      // Usa a lógica correta de Ranking Final
       const standings = matchService.getFinalRankings(match);
-      
       const myRank = standings.findIndex(s => s.teamId === myTeamId) + 1;
       const championName = standings[0]?.teamName;
       const isChampion = myRank === 1;
@@ -140,8 +121,10 @@ const Career: React.FC<CareerProps> = ({ currentUser }) => {
           reader.onload = async () => {
               const base64 = reader.result as string;
               await matchService.updateChampionPhoto(uploadTargetMatchId, base64);
-              await loadCareer(); 
-              setIsUploading(false);
+              // A atualização da foto ainda requer um reload ou callback do pai, 
+              // mas para simplificar e manter a performance, vamos apenas recarregar a página se necessário
+              // ou idealmente chamar uma prop onRefresh do pai.
+              window.location.reload(); 
           };
       } catch (error) {
           console.error(error);
@@ -174,15 +157,8 @@ const Career: React.FC<CareerProps> = ({ currentUser }) => {
 
   const phaseOrder = [GamePhase.FINAL, GamePhase.THIRD_PLACE, GamePhase.PHASE_2, GamePhase.PHASE_1];
 
-  if (loading) {
-      return (
-          <div className="flex flex-col items-center justify-center min-h-screen pb-20">
-              <Loader2 className="w-10 h-10 text-green-500 animate-spin" />
-              <p className="text-slate-500 mt-2">Carregando carreira...</p>
-          </div>
-      );
-  }
-
+  // Loading removido pois dados são instantâneos
+  
   return (
     <div className="w-full max-w-lg mx-auto pb-24 animate-fade-in pt-6 px-4">
         
@@ -197,7 +173,7 @@ const Career: React.FC<CareerProps> = ({ currentUser }) => {
             </div>
         )}
 
-        {Object.entries(groupedMatches).map(([month, monthMatches]) => (
+        {Object.entries(groupedMatches).map(([month, monthMatches]: [string, Match[]]) => (
             <div key={month} className="mb-8">
                 <h3 className="text-slate-400 text-xs font-bold uppercase mb-3 pl-2 border-l-2 border-slate-600">{month}</h3>
                 
@@ -209,13 +185,10 @@ const Career: React.FC<CareerProps> = ({ currentUser }) => {
                         
                         return (
                             <div key={match.id} className="bg-slate-800 rounded-xl overflow-hidden shadow-lg border border-slate-700 transition-all duration-300">
-                                
-                                {/* RESUMO (Card Principal) */}
                                 <div 
                                     onClick={() => toggleMatch(match.id)}
                                     className="p-4 flex items-center justify-between cursor-pointer hover:bg-slate-750"
                                 >
-                                    {/* Esquerda: Data e COR DO MEU TIME */}
                                     <div className="flex flex-col items-center gap-2 min-w-[3rem]">
                                         <span className="text-[10px] text-slate-400 font-mono">{dateDay}</span>
                                         <div 
@@ -224,7 +197,6 @@ const Career: React.FC<CareerProps> = ({ currentUser }) => {
                                         ></div>
                                     </div>
 
-                                    {/* Centro: Stats */}
                                     <div className="flex gap-4 sm:gap-6 text-center">
                                         <div>
                                             <span className="text-[10px] text-slate-500 font-bold uppercase block">GOLS</span>
@@ -240,7 +212,6 @@ const Career: React.FC<CareerProps> = ({ currentUser }) => {
                                         </div>
                                     </div>
 
-                                    {/* Direita: Posição */}
                                     <div className="min-w-[3rem] flex justify-end">
                                         {isChampion ? (
                                             <div className="bg-green-500/10 p-2 rounded-lg border border-green-500/30">
@@ -252,11 +223,8 @@ const Career: React.FC<CareerProps> = ({ currentUser }) => {
                                     </div>
                                 </div>
 
-                                {/* DETALHES (Accordion) */}
                                 {isExpanded && (
                                     <div className="bg-slate-900/50 border-t border-slate-700 p-4 animate-slide-down">
-                                        
-                                        {/* NAVEGAÇÃO DE ABAS */}
                                         <div className="flex gap-4 mb-5 border-b border-slate-700/50">
                                             <button 
                                                 onClick={(e) => { e.stopPropagation(); setActiveTab('matches'); }}
@@ -272,7 +240,6 @@ const Career: React.FC<CareerProps> = ({ currentUser }) => {
                                             </button>
                                         </div>
 
-                                        {/* --- ABA DE PARTIDAS --- */}
                                         {activeTab === 'matches' && (
                                             <>
                                                 <div className="space-y-6 mb-6">
@@ -388,14 +355,12 @@ const Career: React.FC<CareerProps> = ({ currentUser }) => {
                                             </>
                                         )}
 
-                                        {/* --- ABA DE ELENCOS --- */}
                                         {activeTab === 'squads' && (
                                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                                                 {match.teams.map(team => (
                                                     <div key={team.id} className="bg-slate-800 rounded border border-slate-700 overflow-hidden">
                                                         <div className="bg-slate-700/30 px-3 py-2 border-b border-slate-700 flex justify-between items-center">
                                                             <span className="font-bold text-white text-sm">{team.name}</span>
-                                                            {/* Se quiser mostrar o OVR Médio */}
                                                             {team.avgOvr && <span className="text-xs bg-slate-900 px-2 py-0.5 rounded text-slate-400">{team.avgOvr} OVR</span>}
                                                         </div>
                                                         <div className="p-2 space-y-1">
@@ -416,7 +381,6 @@ const Career: React.FC<CareerProps> = ({ currentUser }) => {
                                     </div>
                                 )}
                                 
-                                {/* Indicador de Expandir */}
                                 <div 
                                     className={`h-4 w-full flex justify-center items-center bg-slate-800 cursor-pointer hover:bg-slate-700 transition-colors ${isExpanded ? 'bg-slate-700' : ''}`}
                                     onClick={() => toggleMatch(match.id)}
@@ -430,7 +394,6 @@ const Career: React.FC<CareerProps> = ({ currentUser }) => {
             </div>
         ))}
         
-        {/* Input Oculto para Upload */}
         <input type="file" ref={fileInputRef} className="hidden" accept="image/*" onChange={handlePhotoUpload} disabled={isUploading} />
     </div>
   );

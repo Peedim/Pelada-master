@@ -16,6 +16,7 @@ import Rankings from './components/Rankings';
 import { Player, PlayerFormData, Match, MatchStatus } from './types';
 import { playerService } from './services/playerService';
 import { matchService } from './services/matchService';
+import { rankingService } from './services/rankingService'; // <--- IMPORT NOVO
 import { supabase } from './services/supabaseClient';
 import { LayoutDashboard, Shuffle, FolderOpen, History, LogOut } from 'lucide-react';
 import AuthGuard from './components/AuthGuard'; 
@@ -31,8 +32,12 @@ const App: React.FC = () => {
   const [mainTab, setMainTab] = useState<MainTab>('home');
   const [adminView, setAdminView] = useState<AdminView>('dashboard');
   
+  // --- ESTADO GLOBAL (Otimização) ---
   const [players, setPlayers] = useState<Player[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
+  const [hallOfFame, setHallOfFame] = useState<any[]>([]); // <--- NOVO
+  const [manualUnlocks, setManualUnlocks] = useState<string[]>([]); // <--- NOVO
+  
   const [selectedPlayer, setSelectedPlayer] = useState<Player | undefined>(undefined);
   const [selectedDraftId, setSelectedDraftId] = useState<string | null>(null);
   const [activeMatchId, setActiveMatchId] = useState<string | null>(null);
@@ -54,36 +59,88 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (session) {
-      loadInitialData();
+      // Se já temos jogadores, passamos 'false' para NÃO mostrar o spinner
+      // O app vai atualizar os dados (caso alguém tenha feito gol), mas sem piscar a tela
+      const isFirstLoad = players.length === 0;
+      loadInitialData(isFirstLoad);
     } else {
       setLoading(false);
     }
-  }, [session]);
+    // Adicionei 'players.length' nas dependências para ele saber se é first load
+  }, [session, players.length]);
 
-  const loadInitialData = async () => {
+  // --- CARREGAMENTO INICIAL UNIFICADO ---
+  const loadInitialData = async (forceLoading = true) => {
     try {
-      setLoading(true);
-      const [allPlayers, allMatches] = await Promise.all([
+      // SÓ MOSTRA O LOADING SE:
+      // 1. For forçado (primeira carga)
+      // 2. OU se ainda não tivermos jogadores carregados na memória
+      const shouldShowSpinner = forceLoading || players.length === 0;
+
+      if (shouldShowSpinner) {
+        setLoading(true);
+      }
+
+      // Carrega tudo em paralelo
+      const [allPlayers, allMatches, hallData] = await Promise.all([
         playerService.getAll(),
-        matchService.getAll()
+        matchService.getAll(),
+        rankingService.getHallOfFame()
       ]);
+      
       setPlayers(allPlayers);
       setMatches(allMatches);
+      setHallOfFame(hallData);
 
       if (session?.user?.email) {
         const userEmail = session.user.email.toLowerCase();
         const foundPlayer = allPlayers.find(p => p.email.toLowerCase() === userEmail);
-        if (foundPlayer) setCurrentUserId(foundPlayer.id);
+        if (foundPlayer) {
+            setCurrentUserId(foundPlayer.id);
+            const unlocks = await playerService.getManualAchievements(foundPlayer.id);
+            setManualUnlocks(unlocks);
+        }
       }
-    } catch (error) { console.error("Failed to load initial data", error); } finally { setLoading(false); }
+    } catch (error) { 
+      console.error("Failed to load initial data", error); 
+    } finally { 
+      // Sempre desliga o loading no final, independente se ligou ou não
+      setLoading(false); 
+    }
   };
 
+  // --- REFRESH GERAL (Atualiza tudo após ações importantes) ---
   const refreshData = async () => {
     try {
-      const [allPlayers, allMatches] = await Promise.all([playerService.getAll(), matchService.getAll()]);
+      const [allPlayers, allMatches, hallData] = await Promise.all([
+          playerService.getAll(), 
+          matchService.getAll(),
+          rankingService.getHallOfFame()
+      ]);
       setPlayers(allPlayers);
       setMatches(allMatches);
+      setHallOfFame(hallData);
+      
+      // Se tiver usuário logado, atualiza conquistas manuais também
+      if (currentUserId) {
+          const unlocks = await playerService.getManualAchievements(currentUserId);
+          setManualUnlocks(unlocks);
+      }
     } catch (error) { console.error("Error refreshing data:", error); }
+  };
+
+  // --- OTIMIZAÇÃO: REFRESH RÁPIDO (Só a partida ativa) ---
+  const refreshActiveMatchOnly = async (matchId: string) => {
+    try {
+        const updatedMatch = await matchService.getById(matchId);
+        if (updatedMatch) {
+            setMatches(prevMatches => 
+                prevMatches.map(m => m.id === matchId ? updatedMatch : m)
+            );
+        }
+    } catch (error) {
+        console.error("Erro ao atualizar partida individual:", error);
+    }
   };
 
   const handleLogout = async () => {
@@ -114,24 +171,14 @@ const App: React.FC = () => {
       <div className="border-b border-slate-800 bg-slate-900/90 sticky top-0 z-40 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
           <div 
-  className="flex items-center gap-3 cursor-pointer hover:opacity-90 transition-opacity" 
-  onClick={() => {
-    // Se estiver na Home, não faz nada ou recarrega. Se estiver em Admin, volta pro Dashboard.
-    if (mainTab !== 'home') setAdminView('dashboard');
-  }}
->
-  {/* AQUI ESTÁ A LOGO - Substitua '/logo.png' pelo caminho real da sua imagem na pasta public */}
-  <img 
-    src="/logo2.webp" 
-    alt="Logo C13" 
-    className="h-10 w-10 object-contain drop-shadow-lg" 
-  />
-  
-  {/* Nome do App */}
-  <span className="font-bold text-xl tracking-tight text-white hidden sm:block">
-    C13 Manager
-  </span>
-</div>
+            className="flex items-center gap-3 cursor-pointer hover:opacity-90 transition-opacity" 
+            onClick={() => {
+                if (mainTab !== 'home') setAdminView('dashboard');
+            }}
+            >
+            <img src="/logo2.webp" alt="Logo C13" className="h-10 w-10 object-contain drop-shadow-lg" />
+            <span className="font-bold text-xl tracking-tight text-white hidden sm:block">C13 Manager</span>
+          </div>
           
           <div className="absolute left-1/2 transform -translate-x-1/2 font-bold text-white uppercase tracking-wider hidden xs:block">{mainTab === 'home' ? 'PELADA MANAGER' : ''}</div>
 
@@ -148,10 +195,10 @@ const App: React.FC = () => {
             {mainTab === 'admin' && <DataExport />}
             
             {currentUser && (
-               <NotificationBell 
+                <NotificationBell 
                   currentUser={currentUser} 
                   onNavigate={(tab) => setMainTab(tab as MainTab)} 
-               />
+                />
             )}
             
             <button onClick={handleLogout} className="p-2 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-full transition-colors" title="Sair"><LogOut size={20} /></button>
@@ -160,25 +207,30 @@ const App: React.FC = () => {
       </div>
 
       <main className="max-w-7xl mx-auto py-4">
-        {/* --- 2. LÓGICA DE ONBOARDING --- */}
-        {/* Se o usuário não tiver Posição ou Estilo, mostra SÓ o Onboarding */}
         {currentUser && (!currentUser.position || !currentUser.playStyle) ? (
             <PlayerOnboarding 
                 player={currentUser} 
                 onComplete={refreshData} 
             />
         ) : (
-            /* --- SE O PERFIL ESTIVER COMPLETO, MOSTRA O APP NORMAL --- */
             <>
                 {mainTab === 'home' && currentUser && <Home player={currentUser} matches={matches} />}
-                {mainTab === 'career' && currentUser && <Career currentUser={currentUser} />}
                 
-                {mainTab === 'rankings' && <Rankings players={players} />}
+                {/* --- AQUI ESTÁ A MÁGICA: Passamos os dados prontos --- */}
+                {mainTab === 'career' && currentUser && (
+                    <Career currentUser={currentUser} matches={matches} />
+                )}
+                
+                {mainTab === 'rankings' && (
+                    <Rankings players={players} matches={matches} hallOfFame={hallOfFame} />
+                )}
+                
                 {mainTab === 'achievements' && currentUser && (
-                  <Achievements player={currentUser} />
+                  <Achievements player={currentUser} matches={matches} hallOfFame={hallOfFame} manualUnlocks={manualUnlocks} />
                 )}
                 
                 {mainTab === 'home' && !currentUser && <div className="flex flex-col items-center justify-center pt-20 text-slate-500"><p>Usuário não identificado.</p></div>}
+                
                 {mainTab === 'admin' && (
                   <AuthGuard isAdminRoute={true} currentUserAdmin={isAdmin}>
                     <div className="px-4 sm:px-6 lg:px-8 pb-20">
@@ -187,7 +239,10 @@ const App: React.FC = () => {
                       {adminView === 'sorter' && <TeamSorter players={players} onDraftSaved={handleDraftSaved} />}
                       {adminView === 'drafts' && <DraftList onSelectMatch={handleSelectMatch} />}
                       {adminView === 'draft-editor' && selectedDraftId && <DraftEditor matchId={selectedDraftId} onBack={() => setAdminView('drafts')} onPublish={handlePublishMatch} isLoading={actionLoading} />}
-                      {adminView === 'active-match' && activeMatchId && <ActiveMatchDashboard matchId={activeMatchId} onBack={() => setAdminView(previousAdminView)} onMatchUpdate={refreshData} />}
+                      
+                      {/* OTIMIZAÇÃO: Usamos refreshActiveMatchOnly para ações in-game */}
+                      {adminView === 'active-match' && activeMatchId && <ActiveMatchDashboard matchId={activeMatchId} onBack={() => setAdminView(previousAdminView)} onMatchUpdate={() => refreshActiveMatchOnly(activeMatchId)} />}
+                      
                       {adminView === 'history' && <MatchHistory onSelectMatch={handleSelectHistoryMatch} />}
                     </div>
                   </AuthGuard>
@@ -196,8 +251,6 @@ const App: React.FC = () => {
         )}
       </main>
       
-      {/* Footer é escondido durante o Onboarding se quiser, ou pode manter. 
-          Aqui mantivemos, mas o Onboarding é um modal "fixed", então ele cobre tudo. */}
       <FooterNav currentTab={mainTab} onTabChange={(tab) => setMainTab(tab as MainTab)} isAdmin={isAdmin} />
     </div>
   );

@@ -1,51 +1,90 @@
-import React, { useEffect, useState } from 'react';
-import { Player, RankingsData } from '../types';
+import React, { useMemo, useState } from 'react';
+import { Player, RankingsData, Match } from '../types';
 import { rankingService } from '../services/rankingService';
-import { Trophy, Medal, Flame, Shield, User, Crown, Calendar, Globe, List } from 'lucide-react';
+import { Trophy, Medal, Flame, Shield, Crown, Calendar, Globe } from 'lucide-react';
 
 interface RankingsProps {
   players: Player[];
+  matches: Match[]; // Recebe do pai (App.tsx)
+  hallOfFame: any[]; // Recebe do pai (App.tsx)
 }
 
-const Rankings: React.FC<RankingsProps> = ({ players }) => {
-  // Três abas: Mensal, Geral, Hall
+const Rankings: React.FC<RankingsProps> = ({ players, matches, hallOfFame }) => {
   const [activeTab, setActiveTab] = useState<'monthly' | 'allTime' | 'hall'>('monthly');
   
-  const [monthlyData, setMonthlyData] = useState<RankingsData | null>(null);
-  const [allTimeData, setAllTimeData] = useState<RankingsData | null>(null);
-  const [hallData, setHallData] = useState<any[]>([]); // Dados brutos do Hall
-  const [loading, setLoading] = useState(true);
+  const monthlyRawData = useMemo(() => rankingService.getCurrentMonthRankings(players, matches), [players, matches]);
+  const allTimeRawData = useMemo(() => rankingService.getAllTimeRankings(players, matches), [players, matches]);
 
-  useEffect(() => {
-    loadAllData();
-  }, [players]);
+  // --- LÓGICA DE RANKING E DESEMPATE ---
+  const prepareRankingList = (data: RankingsData, statKey: 'wins' | 'goals' | 'assists' | 'cleanSheets') => {
+      return Object.values(data)
+          .map(stat => {
+              const player = players.find(p => p.id === stat.playerId);
+              return {
+                  playerId: stat.playerId,
+                  playerName: player?.name || 'Desconhecido',
+                  playerPhoto: player?.photo_url,
+                  position: player?.position || '-',
+                  
+                  // Valor Principal
+                  value: stat[statKey],
+                  
+                  // Valores para Desempate
+                  wins: stat.wins,
+                  goals: stat.goals,
+                  assists: stat.assists,
+                  contributions: stat.goals + stat.assists // Gols + Assistências
+              };
+          })
+          // 1. FILTRO: Remove Zeros e Aplica Regra da Muralha
+          .filter(item => {
+              if (item.value === 0) return false;
 
-  const loadAllData = async () => {
-    setLoading(true);
-    // Carrega tudo em paralelo para ser rápido
-    const [monthly, allTime, hall] = await Promise.all([
-      rankingService.getCurrentMonthRankings(players),
-      rankingService.getAllTimeRankings(players),
-      rankingService.getHallOfFame()
-    ]);
-    
-    setMonthlyData(monthly);
-    setAllTimeData(allTime);
-    setHallData(hall);
-    setLoading(false);
+              // Muralha: Apenas Defensores e Goleiros
+              if (statKey === 'cleanSheets') {
+                  const pos = item.position;
+                  return pos === 'Defensor' || pos === 'Goleiro' || pos === 'Zagueiro'; 
+              }
+              return true;
+          })
+          // 2. ORDENAÇÃO COM DESEMPATE
+          .sort((a, b) => {
+              // Critério 1: Valor Principal (ex: Mais Gols)
+              const diff = b.value - a.value;
+              if (diff !== 0) return diff;
+
+              // Critério 2: Desempate Específico por Categoria
+              if (statKey === 'wins') {
+                  // MVP empata? Quem participou de mais gols (G+A) vence
+                  return b.contributions - a.contributions;
+              }
+              if (statKey === 'goals') {
+                  // Artilheiro empata? Quem tem mais vitórias vence
+                  return b.wins - a.wins;
+              }
+              if (statKey === 'assists') {
+                  // Garçom empata? Quem tem mais vitórias vence
+                  return b.wins - a.wins;
+              }
+              if (statKey === 'cleanSheets') {
+                  // Muralha empata? Quem tem mais vitórias vence
+                  return b.wins - a.wins;
+              }
+
+              return 0; // Empate total
+          })
+          .slice(0, 5); // Pega Top 5
   };
 
-  // Helper para agrupar o Hall da Fama por Mês
   const getHallByMonth = () => {
       const grouped: Record<string, any[]> = {};
-      hallData.forEach(item => {
+      hallOfFame.forEach(item => {
           if (!grouped[item.month_key]) grouped[item.month_key] = [];
           grouped[item.month_key].push(item);
       });
       return grouped;
   };
 
-  // Ícones e Títulos por Categoria
   const getCategoryInfo = (cat: string) => {
       switch(cat) {
           case 'wins': return { label: 'MVP', icon: Trophy, color: 'text-yellow-400' };
@@ -56,18 +95,15 @@ const Rankings: React.FC<RankingsProps> = ({ players }) => {
       }
   };
 
-  // Componente Visual do Card de Ranking (Genérico para Mensal e Geral)
   const RankingCard = ({ title, icon: Icon, data }: any) => {
     const topPlayer = data[0];
     const runnersUp = data.slice(1, 5);
 
     return (
       <div className="bg-slate-800/50 backdrop-blur-sm rounded-2xl overflow-hidden border border-slate-700 shadow-xl mb-6 animate-fade-in relative group">
-        {/* Glow effect sutil */}
         <div className="absolute -inset-1 bg-gradient-to-r from-emerald-500/20 to-cyan-500/20 rounded-2xl blur opacity-0 group-hover:opacity-100 transition duration-500"></div>
         
         <div className="relative">
-            {/* Header */}
             <div className="p-4 flex items-center gap-3 border-b border-slate-700/50">
             <div className="p-2 bg-slate-900 rounded-lg shadow-inner">
                 <Icon size={20} className="text-emerald-400" />
@@ -75,10 +111,8 @@ const Rankings: React.FC<RankingsProps> = ({ players }) => {
             <h3 className="font-black text-white uppercase tracking-wider text-sm flex-1">{title}</h3>
             </div>
 
-            {/* Top 1 - O "King" */}
             {topPlayer ? (
             <div className="relative p-6 flex items-center gap-4 bg-gradient-to-b from-slate-800/80 to-slate-900/80">
-                {/* Foto */}
                 <div className="relative shrink-0">
                     <div className="w-20 h-20 rounded-full p-1 bg-gradient-to-br from-emerald-400 to-cyan-500 relative z-10 shadow-lg shadow-emerald-500/20">
                         <img 
@@ -95,13 +129,11 @@ const Rankings: React.FC<RankingsProps> = ({ players }) => {
                     </div>
                 </div>
 
-                {/* Info */}
                 <div className="flex-1 min-w-0">
                     <h4 className="text-xl font-black text-white truncate leading-tight">{topPlayer.playerName}</h4>
                     <span className="text-xs text-emerald-400 font-bold uppercase tracking-wide">{topPlayer.position}</span>
                 </div>
                 
-                {/* Valor Grande */}
                 <div className="text-right">
                     <span className="block text-4xl font-black text-white tracking-tighter drop-shadow-lg">{topPlayer.value}</span>
                     <span className="text-[10px] text-slate-400 font-bold uppercase">Total</span>
@@ -113,7 +145,6 @@ const Rankings: React.FC<RankingsProps> = ({ players }) => {
             </div>
             )}
 
-            {/* Lista dos Runners Up */}
             {runnersUp.length > 0 && (
             <div className="bg-slate-900/60 divide-y divide-slate-800/50">
                 {runnersUp.map((p: any, index: number) => (
@@ -138,22 +169,10 @@ const Rankings: React.FC<RankingsProps> = ({ players }) => {
     );
   };
 
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[60vh]">
-        <div className="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
-        <p className="text-slate-500 mt-4 text-xs animate-pulse font-bold tracking-widest uppercase">Atualizando Rankings...</p>
-      </div>
-    );
-  }
-
-  // Define qual dado exibir baseado na aba
-  const currentData = activeTab === 'monthly' ? monthlyData : allTimeData;
+  const currentRawData = activeTab === 'monthly' ? monthlyRawData : allTimeRawData;
 
   return (
     <div className="w-full max-w-lg mx-auto pb-24 animate-fade-in px-4 pt-6">
-      
-      {/* Header Fixo */}
       <div className="text-center mb-6">
         <h2 className="text-xs font-bold text-emerald-500 tracking-[0.2em] uppercase mb-1">
             {activeTab === 'hall' ? 'Galeria de Lendas' : 'Competição Ativa'}
@@ -163,7 +182,6 @@ const Rankings: React.FC<RankingsProps> = ({ players }) => {
         </h1>
       </div>
 
-      {/* Tabs Estilizadas */}
       <div className="flex p-1 bg-slate-800 rounded-xl mb-8 border border-slate-700 relative">
         <button 
           onClick={() => setActiveTab('monthly')}
@@ -185,17 +203,15 @@ const Rankings: React.FC<RankingsProps> = ({ players }) => {
         </button>
       </div>
 
-      {/* CONTEÚDO MENSAL & GERAL */}
-      {(activeTab === 'monthly' || activeTab === 'allTime') && currentData && (
+      {(activeTab === 'monthly' || activeTab === 'allTime') && (
         <div className="space-y-6">
-          <RankingCard title="MVP" icon={Trophy} data={currentData.wins} />
-          <RankingCard title="Artilharia Pesada" icon={Flame} data={currentData.goals} />
-          <RankingCard title="Garçom" icon={Medal} data={currentData.assists} />
-          <RankingCard title="Muralha" icon={Shield} data={currentData.cleanSheets} />
+          <RankingCard title="MVP" icon={Trophy} data={prepareRankingList(currentRawData, 'wins')} />
+          <RankingCard title="Artilharia Pesada" icon={Flame} data={prepareRankingList(currentRawData, 'goals')} />
+          <RankingCard title="Garçom" icon={Medal} data={prepareRankingList(currentRawData, 'assists')} />
+          <RankingCard title="Muralha" icon={Shield} data={prepareRankingList(currentRawData, 'cleanSheets')} />
         </div>
       )}
 
-      {/* CONTEÚDO HALL DA FAMA */}
       {activeTab === 'hall' && (
         <div className="space-y-8">
             {Object.entries(getHallByMonth()).length === 0 ? (
@@ -207,7 +223,6 @@ const Rankings: React.FC<RankingsProps> = ({ players }) => {
             ) : (
                 Object.entries(getHallByMonth()).map(([monthKey, items]) => (
                     <div key={monthKey} className="animate-slide-up">
-                        {/* Divisor de Mês */}
                         <div className="flex items-center gap-4 mb-4">
                             <div className="h-px bg-slate-700 flex-1"></div>
                             <span className="text-emerald-400 font-black text-sm uppercase tracking-widest bg-slate-900 px-3 py-1 rounded border border-emerald-500/30">
@@ -216,7 +231,6 @@ const Rankings: React.FC<RankingsProps> = ({ players }) => {
                             <div className="h-px bg-slate-700 flex-1"></div>
                         </div>
 
-                        {/* Grid de Campeões do Mês */}
                         <div className="grid grid-cols-2 gap-3">
                             {items.map((item: any) => {
                                 const catInfo = getCategoryInfo(item.category);

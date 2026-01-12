@@ -135,12 +135,13 @@ export interface PlayerRankingStats {
 }
 
 // Interface que agrupa todos os rankings de um período
-export interface RankingsData {
-  wins: PlayerRankingStats[];
-  goals: PlayerRankingStats[];
-  assists: PlayerRankingStats[];
-  cleanSheets: PlayerRankingStats[];
-}
+export type RankingsData = Record<string, {
+    wins: number;
+    goals: number;
+    assists: number;
+    cleanSheets: number;
+    playerId: string;
+}>;
 
 // Interface para o dado salvo no banco (Hall da Fama)
 export interface MonthlyChampion {
