@@ -17,6 +17,7 @@ export interface Achievement {
 
 export interface PlayerStats {
   totalMatches: number;
+  totalEvents: number; // <--- NOVO CAMPO
   totalWins: number;
   totalGoals: number;
   totalAssists: number;
@@ -33,7 +34,7 @@ export interface PlayerStats {
 
 export const calculatePlayerStats = (playerId: string, matches: Match[], hallOfFame: MonthlyChampion[]): PlayerStats => {
   let stats: PlayerStats = {
-    totalMatches: 0, totalWins: 0, totalGoals: 0, totalAssists: 0, totalCleanSheets: 0,
+    totalMatches: 0, totalEvents: 0, totalWins: 0, totalGoals: 0, totalAssists: 0, totalCleanSheets: 0,
     hatTricks: 0, assistTricks: 0, cleanTricks: 0,
     totalTitles: 0, 
     monthlyTitles_MVP: 0, monthlyTitles_Goals: 0, monthlyTitles_Assists: 0, monthlyTitles_Defense: 0
@@ -49,21 +50,21 @@ export const calculatePlayerStats = (playerId: string, matches: Match[], hallOfF
     const playerTeam = match.teams.find(t => t.players.some(p => p.id === playerId));
     if (!playerTeam) return;
 
+    // --- NOVA LÓGICA: CONTA EVENTO (BABA) ---
+    stats.totalEvents++; 
+    // ----------------------------------------
+
     // --- CÁLCULO DE TÍTULO DO EVENTO (CORRIGIDO) ---
-    // Agora usamos getFinalRankings para considerar a FINAL (Mata-mata)
     const standings = matchService.getFinalRankings(match);
     
-    // Se o time do jogador é o primeiro da lista retornada, ele é o campeão
     if (standings.length > 0 && standings[0].teamId === playerTeam.id) {
         stats.totalTitles++;
     }
 
     // Processar Jogos
     const games = match.games.filter(g => g.status === 'FINISHED');
-    // let cleanSheetInEvent = true; 
 
     games.forEach(game => {
-      // É jogo do meu time?
       if (game.homeTeamId !== playerTeam.id && game.awayTeamId !== playerTeam.id) return;
 
       stats.totalMatches++;
@@ -72,7 +73,6 @@ export const calculatePlayerStats = (playerId: string, matches: Match[], hallOfF
       const myScore = isHome ? game.homeScore : game.awayScore;
       const oppScore = isHome ? game.awayScore : game.homeScore;
       
-      // Vitória
       let isWin = myScore > oppScore;
       if (myScore === oppScore && game.penaltyShootout) {
          const p = game.penaltyShootout;
@@ -80,7 +80,6 @@ export const calculatePlayerStats = (playerId: string, matches: Match[], hallOfF
       }
       if (isWin) stats.totalWins++;
 
-      // Clean Sheet (Por jogo para streak)
       if (oppScore === 0) {
         stats.totalCleanSheets++;
         currentCleanSheetStreak++;
@@ -90,10 +89,8 @@ export const calculatePlayerStats = (playerId: string, matches: Match[], hallOfF
         }
       } else {
         currentCleanSheetStreak = 0;
-        // cleanSheetInEvent = false;
       }
 
-      // Stats Individuais
       const goalsInGame = match.goals.filter(g => g.gameId === game.id && g.scorerId === playerId).length;
       const assistsInGame = match.goals.filter(g => g.gameId === game.id && g.assistId === playerId).length;
 
@@ -105,7 +102,6 @@ export const calculatePlayerStats = (playerId: string, matches: Match[], hallOfF
     });
   });
 
-  // Hall da Fama
   hallOfFame.forEach(item => {
       if (item.player_id === playerId) {
           if (item.category === 'wins') stats.monthlyTitles_MVP++;
@@ -636,7 +632,7 @@ export const ACHIEVEMENTS_LIST: Achievement[] = [
     condition: (s) => s.monthlyTitles_MVP >= 10, progress: (s) => Math.min(100, (s.monthlyTitles_MVP / 10) * 100)
   },
 
-  // --- FIDELIDADE ---
+ // --- FIDELIDADE ---
   {
     id: 'games_1', 
     category: 'Fidelidade', 
@@ -646,7 +642,7 @@ export const ACHIEVEMENTS_LIST: Achievement[] = [
     imageUrl: '/badges/part/1part.png', 
     level: 'Bronze', 
     targetValue: 1,
-    condition: (s) => s.totalMatches >= 1, progress: (s) => Math.min(100, (s.totalMatches / 1) * 100)
+    condition: (s) => s.totalEvents >= 1, progress: (s) => Math.min(100, (s.totalEvents / 1) * 100)
   },
    {
     id: 'games_10', 
@@ -657,7 +653,7 @@ export const ACHIEVEMENTS_LIST: Achievement[] = [
     imageUrl: '/badges/part/10part.png', 
     level: 'Prata', 
     targetValue: 10,
-    condition: (s) => s.totalMatches >= 10, progress: (s) => Math.min(100, (s.totalMatches / 10) * 100)
+    condition: (s) => s.totalEvents >= 10, progress: (s) => Math.min(100, (s.totalEvents / 10) * 100)
   },
   {
     id: 'games_50', 
@@ -668,9 +664,8 @@ export const ACHIEVEMENTS_LIST: Achievement[] = [
     imageUrl: '/badges/part/50part.png', 
     level: 'Esmeralda', 
     targetValue: 50,
-    condition: (s) => s.totalMatches >= 50, progress: (s) => Math.min(100, (s.totalMatches / 50) * 100)
+    condition: (s) => s.totalEvents >= 50, progress: (s) => Math.min(100, (s.totalEvents / 50) * 100)
   },
- 
   {
     id: 'games_100', 
     category: 'Fidelidade', 
@@ -680,7 +675,7 @@ export const ACHIEVEMENTS_LIST: Achievement[] = [
     imageUrl: '/badges/part/100part.png', 
     level: 'Elite', 
     targetValue: 100,
-    condition: (s) => s.totalMatches >= 100, progress: (s) => Math.min(100, (s.totalMatches / 100) * 100)
+    condition: (s) => s.totalEvents >= 100, progress: (s) => Math.min(100, (s.totalEvents / 100) * 100)
   },
 
   // --- TÍTULOS DE EVENTO (CAMPEONATOS) ---

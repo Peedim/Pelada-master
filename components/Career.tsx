@@ -3,6 +3,7 @@ import { Match, Player, Game, GamePhase } from '../types';
 import { matchService } from '../services/matchService';
 import { Trophy, ChevronDown, ChevronUp, Zap, Image as ImageIcon, Download, Loader2, Camera, Medal, Star, Activity, Users } from 'lucide-react';
 import { saveAs } from 'file-saver';
+import { imageService } from '../services/imageService';
 
 interface CareerProps {
   currentUser: Player;
@@ -110,24 +111,34 @@ const Career: React.FC<CareerProps> = ({ currentUser, matches: allMatches }) => 
       };
   };
 
-  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
       const file = e.target.files?.[0];
       if (!file || !uploadTargetMatchId) return;
 
       setIsUploading(true);
       try {
-          const reader = new FileReader();
-          reader.readAsDataURL(file);
-          reader.onload = async () => {
-              const base64 = reader.result as string;
-              await matchService.updateChampionPhoto(uploadTargetMatchId, base64);
-              // A atualização da foto ainda requer um reload ou callback do pai, 
-              // mas para simplificar e manter a performance, vamos apenas recarregar a página se necessário
-              // ou idealmente chamar uma prop onRefresh do pai.
+          // --- OTIMIZAÇÃO AQUI ---
+          // Antigo: FileReader (Base64) -> matchService
+          // Novo: imageService (Storage) -> URL -> matchService
+          
+          const publicUrl = await imageService.uploadImage(
+              file, 
+              'champions', // Pasta dentro do bucket
+              uploadTargetMatchId // Nome do arquivo
+          );
+
+          if (publicUrl) {
+              await matchService.updateChampionPhoto(uploadTargetMatchId, publicUrl);
+              // Recarrega a página para ver a foto nova
               window.location.reload(); 
-          };
+          } else {
+              alert("Erro ao enviar imagem.");
+          }
+          
       } catch (error) {
           console.error(error);
+          alert("Erro ao processar imagem.");
+      } finally {
           setIsUploading(false);
       }
   };

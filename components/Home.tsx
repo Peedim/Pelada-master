@@ -5,6 +5,7 @@ import { matchService } from '../services/matchService';
 import { Zap, TrendingUp, User, Camera, Upload, X, Loader2, Trash2, Check, RefreshCw, ChevronsUp, ChevronsDown, Minus, AlertTriangle } from 'lucide-react';
 import { ACHIEVEMENTS_LIST } from '../data/achievements';
 import { Trophy, Shield, Target, Crown, Medal, Star, Flame, Activity } from 'lucide-react';
+import { imageService } from '../services/imageService';
 
 const getNameSizeClass = (name: string) => {
     const length = name.length;
@@ -207,11 +208,27 @@ const Home: React.FC<HomeProps> = ({ player, matches, onPlayerUpdate }) => {
         }; reader.onerror = (err) => reject(err);
     });
   };
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0]; if (!file) return; setIsUploading(true);
-      try { const base64Image = await processImage(file); setPreviewImage(base64Image); } 
-      catch (error) { console.error(error); alert("Erro na imagem."); } finally { setIsUploading(false); }
-  };
+  const handlePhotoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file || !player) return; // 'player' é o usuário logado
+
+    try {
+        setIsUploading(true);
+        const publicUrl = await imageService.uploadImage(file, 'profiles', player.id);
+
+        if (publicUrl) {
+            await playerService.updatePhoto(player.id, publicUrl);
+            window.location.reload(); 
+        } else {
+            alert('Erro ao fazer upload da imagem.');
+        }
+
+    } catch (error) {
+        console.error('Erro:', error);
+        alert('Erro ao atualizar foto.');
+    } finally {
+    }
+};
   const confirmSavePhoto = async () => { if (previewImage) await savePhoto(previewImage); };
   const cancelPreview = () => { setPreviewImage(null); if (fileInputRef.current) fileInputRef.current.value = ''; };
   const savePhoto = async (url: string) => {
@@ -345,7 +362,7 @@ const Home: React.FC<HomeProps> = ({ player, matches, onPlayerUpdate }) => {
                   ) : (
                       <div className="flex flex-col items-center">
                           <div className="w-full border-2 border-dashed border-slate-600 rounded-lg p-8 flex flex-col items-center justify-center bg-slate-900/50 cursor-pointer hover:border-emerald-500 hover:bg-slate-900 mb-4" onClick={() => fileInputRef.current?.click()}><Upload size={24} className="text-slate-400 mb-2"/><p className="text-slate-300 text-sm">Selecione uma imagem</p></div>
-                          <input type="file" ref={fileInputRef} className="hidden" accept="image/png, image/jpeg" onChange={handleFileChange} disabled={isUploading} />
+                          <input type="file" ref={fileInputRef} className="hidden" accept="image/png, image/jpeg" onChange={handlePhotoUpload} disabled={isUploading} />
                           {player.photo_url && (<button onClick={handleRemovePhoto} className="text-red-400 text-sm mt-2">Remover Foto</button>)}
                       </div>
                   )}
