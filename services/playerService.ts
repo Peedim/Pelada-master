@@ -144,7 +144,6 @@ export const playerService = {
   },
 
   create: async (formData: PlayerFormData): Promise<Player> => {
-    // 1. Extraímos o initial_ovr que veio do formulário (manual)
     const {
       pace,
       shooting,
@@ -160,13 +159,9 @@ export const playerService = {
       initial_ovr,
     } = formData;
 
-    // 2. Verificamos se há atributos definidos
     const totalAttributes =
       (pace || 0) + (shooting || 0) + (passing || 0) + (defending || 0);
 
-    // 3. Lógica Híbrida:
-    // Se tiver atributos > 0, calcula matematicamente.
-    // Se atributos == 0 (Pré-cadastro), usa o initial_ovr manual.
     let finalOvr = initial_ovr;
 
     if (totalAttributes > 0) {
@@ -191,7 +186,7 @@ export const playerService = {
           shirt_number: shirt_number || null,
           photo_url: photo_url || null,
           is_admin: !!is_admin,
-          initial_ovr: finalOvr, // <--- Usa a variável tratada
+          initial_ovr: finalOvr,
           pace: pace || 0,
           shooting: shooting || 0,
           passing: passing || 0,
@@ -232,7 +227,6 @@ export const playerService = {
       initial_ovr,
     } = formData;
 
-    // Mesma lógica de proteção para o update
     const totalAttributes =
       (pace || 0) + (shooting || 0) + (passing || 0) + (defending || 0);
 
@@ -323,6 +317,8 @@ export const playerService = {
       id: p.id,
       position: p.position,
     }));
+    
+    // Busca TODOS os jogos para calcular presenças
     const allMatches = await matchService.getAll();
 
     // 2. Calcula Rankings do Mês Atual (Memória)
@@ -331,7 +327,7 @@ export const playerService = {
       allMatches
     );
 
-    // 3. Determina os Campeões (Com Filtro e Desempate)
+    // 3. Determina os Campeões
     const mvp = findChampion(monthlyStats, players as Player[], "wins");
     const artilheiro = findChampion(monthlyStats, players as Player[], "goals");
     const garcom = findChampion(monthlyStats, players as Player[], "assists");
@@ -343,68 +339,75 @@ export const playerService = {
 
     // 4. Salva no Hall da Fama
     const now = new Date();
-    // Gera chave do mês (ex: "JAN", "FEV")
     const monthKey = now
       .toLocaleString("pt-BR", { month: "short" })
       .toUpperCase()
       .replace(".", "");
 
     const championsToSave = [];
-    if (mvp)
-      championsToSave.push({
-        category: "wins",
-        playerId: mvp.playerId,
-        value: mvp.wins,
-      });
-    if (artilheiro)
-      championsToSave.push({
-        category: "goals",
-        playerId: artilheiro.playerId,
-        value: artilheiro.goals,
-      });
-    if (garcom)
-      championsToSave.push({
-        category: "assists",
-        playerId: garcom.playerId,
-        value: garcom.assists,
-      });
-    if (muralha)
-      championsToSave.push({
-        category: "clean_sheets",
-        playerId: muralha.playerId,
-        value: muralha.cleanSheets,
-      });
+    if (mvp) championsToSave.push({ category: "wins", playerId: mvp.playerId, value: mvp.wins });
+    if (artilheiro) championsToSave.push({ category: "goals", playerId: artilheiro.playerId, value: artilheiro.goals });
+    if (garcom) championsToSave.push({ category: "assists", playerId: garcom.playerId, value: garcom.assists });
+    if (muralha) championsToSave.push({ category: "clean_sheets", playerId: muralha.playerId, value: muralha.cleanSheets });
 
     if (championsToSave.length > 0) {
       await rankingService.saveChampions(monthKey, championsToSave);
     }
 
-    // 5. Aplica Evolução de OVR (Lógica original)
+    // 5. Aplica Evolução de OVR (Com Divisor Dinâmico e Verificação de Inatividade)
     let count = 0;
 
+    // Filtra apenas jogos do mês atual para contar presença
+    const currentMonthMatches = allMatches.filter(m => {
+        const mDate = new Date(m.date);
+        return mDate.getMonth() === now.getMonth() && mDate.getFullYear() === now.getFullYear();
+    });
+
     for (const p of playersData) {
-      const gainPace = Math.round(Number(p.pace_acc || 0) / 4);
-      const gainShoot = Math.round(Number(p.shooting_acc || 0) / 4);
-      const gainPass = Math.round(Number(p.passing_acc || 0) / 4);
-      const gainDef = Math.round(Number(p.defending_acc || 0) / 4);
+      // Conta quantos jogos o jogador participou neste mês
+      const matchesPlayed = currentMonthMatches.filter(m => 
+          m.teams.some(t => t.players.some(pl => pl.id === p.id))
+      ).length;
+
+      // Define o divisor: Se jogou 0, usa 1 para não quebrar a conta (mas o acc será 0 mesmo)
+      // Se jogou 1, divide por 1. Se jogou 4, divide por 4.
+      const divisor = matchesPlayed > 0 ? matchesPlayed : 1;
+
+      // Verifica atividade total para proteção de OVR
+      const totalActivity =
+        Math.abs(Number(p.pace_acc || 0)) +
+        Math.abs(Number(p.shooting_acc || 0)) +
+        Math.abs(Number(p.passing_acc || 0)) +
+        Math.abs(Number(p.defending_acc || 0));
+
+      const gainPace = Math.round(Number(p.pace_acc || 0) / divisor);
+      const gainShoot = Math.round(Number(p.shooting_acc || 0) / divisor);
+      const gainPass = Math.round(Number(p.passing_acc || 0) / divisor);
+      const gainDef = Math.round(Number(p.defending_acc || 0) / divisor);
 
       let newPace = Math.max(1, Math.min(99, p.pace + gainPace));
       let newShoot = Math.max(1, Math.min(99, p.shooting + gainShoot));
       let newPass = Math.max(1, Math.min(99, p.passing + gainPass));
       let newDef = Math.max(1, Math.min(99, p.defending + gainDef));
 
-      const rawNewOvr = calculateWeightedOvr(p.position, {
-        pace: newPace,
-        shooting: newShoot,
-        passing: newPass,
-        defending: newDef,
-      });
-      let finalOvr = Math.round(rawNewOvr);
-
+      let finalOvr;
       const currentOvr = p.initial_ovr;
-      const diff = finalOvr - currentOvr;
-      if (diff > 2) finalOvr = currentOvr + 2;
-      if (diff < -2) finalOvr = currentOvr - 2;
+
+      if (totalActivity === 0) {
+        finalOvr = currentOvr;
+      } else {
+        const rawNewOvr = calculateWeightedOvr(p.position, {
+          pace: newPace,
+          shooting: newShoot,
+          passing: newPass,
+          defending: newDef,
+        });
+        finalOvr = Math.round(rawNewOvr);
+
+        const diff = finalOvr - currentOvr;
+        if (diff > 2) finalOvr = currentOvr + 2;
+        if (diff < -2) finalOvr = currentOvr - 2;
+      }
 
       const history = Array.isArray(p.ovr_history) ? [...p.ovr_history] : [];
       if (finalOvr !== currentOvr) {
@@ -436,29 +439,55 @@ export const playerService = {
     const { data: players } = await supabase.from("players").select("*");
     if (!players) return [];
 
+    // Busca jogos para calcular o divisor correto na simulação também
+    const allMatches = await matchService.getAll();
+    const now = new Date();
+    const currentMonthMatches = allMatches.filter(m => {
+        const mDate = new Date(m.date);
+        return mDate.getMonth() === now.getMonth() && mDate.getFullYear() === now.getFullYear();
+    });
+
     const simulation: PlayerUpdateSimulation[] = players.map((p: any) => {
-      let newPace = Math.round(p.pace + Number(p.pace_acc || 0) / 4);
-      let newShoot = Math.round(p.shooting + Number(p.shooting_acc || 0) / 4);
-      let newPass = Math.round(p.passing + Number(p.passing_acc || 0) / 4);
-      let newDef = Math.round(p.defending + Number(p.defending_acc || 0) / 4);
+      // Lógica de divisor dinâmico
+      const matchesPlayed = currentMonthMatches.filter(m => 
+          m.teams.some(t => t.players.some(pl => pl.id === p.id))
+      ).length;
+      const divisor = matchesPlayed > 0 ? matchesPlayed : 1;
+
+      const totalActivity =
+        Math.abs(Number(p.pace_acc || 0)) +
+        Math.abs(Number(p.shooting_acc || 0)) +
+        Math.abs(Number(p.passing_acc || 0)) +
+        Math.abs(Number(p.defending_acc || 0));
+
+      let newPace = Math.round(p.pace + Number(p.pace_acc || 0) / divisor);
+      let newShoot = Math.round(p.shooting + Number(p.shooting_acc || 0) / divisor);
+      let newPass = Math.round(p.passing + Number(p.passing_acc || 0) / divisor);
+      let newDef = Math.round(p.defending + Number(p.defending_acc || 0) / divisor);
 
       newPace = Math.max(1, Math.min(99, newPace));
       newShoot = Math.max(1, Math.min(99, newShoot));
       newPass = Math.max(1, Math.min(99, newPass));
       newDef = Math.max(1, Math.min(99, newDef));
 
-      const rawNewOvr = calculateWeightedOvr(p.position, {
-        pace: newPace,
-        shooting: newShoot,
-        passing: newPass,
-        defending: newDef,
-      });
-      let finalOvr = Math.round(rawNewOvr);
+      let finalOvr;
       const currentOvr = p.initial_ovr;
 
-      const diff = finalOvr - currentOvr;
-      if (diff > 2) finalOvr = currentOvr + 2;
-      if (diff < -2) finalOvr = currentOvr - 2;
+      if (totalActivity === 0) {
+        finalOvr = currentOvr;
+      } else {
+        const rawNewOvr = calculateWeightedOvr(p.position, {
+          pace: newPace,
+          shooting: newShoot,
+          passing: newPass,
+          defending: newDef,
+        });
+        finalOvr = Math.round(rawNewOvr);
+
+        const diff = finalOvr - currentOvr;
+        if (diff > 2) finalOvr = currentOvr + 2;
+        if (diff < -2) finalOvr = currentOvr - 2;
+      }
 
       return {
         player: { ...p, id: p.id, name: p.name },

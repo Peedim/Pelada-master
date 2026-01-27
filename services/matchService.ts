@@ -200,7 +200,6 @@ export const matchService = {
     await supabase.from('games').update({ status: GameStatus.LIVE }).eq('id', gameId);
     return (await matchService.getById(matchId))!;
   },
-
   endMatch: async (matchId: string, gameId: string): Promise<Match> => {
     await supabase.from('games').update({ status: GameStatus.FINISHED }).eq('id', gameId);
     let match = await matchService.getById(matchId);

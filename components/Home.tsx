@@ -6,6 +6,7 @@ import { Zap, TrendingUp, User, Camera, Upload, X, Loader2, Trash2, Check, Refre
 import { ACHIEVEMENTS_LIST } from '../data/achievements';
 import { Trophy, Shield, Target, Crown, Medal, Star, Flame, Activity } from 'lucide-react';
 import { imageService } from '../services/imageService';
+import MatchDayBanner from './MatchDayBanner';
 
 const getNameSizeClass = (name: string) => {
     const length = name.length;
@@ -27,9 +28,11 @@ interface HomeProps {
   player: Player;
   matches: Match[]; 
   onPlayerUpdate?: () => void;
+  onNavigateToMatch?: (matchId: string) => void;
 }
 
-const Home: React.FC<HomeProps> = ({ player, matches, onPlayerUpdate }) => {
+// 1. Adicionado onNavigateToMatch na desestruturação das props
+const Home: React.FC<HomeProps> = ({ player, matches, onPlayerUpdate, onNavigateToMatch }) => {
   const [isEditingPhoto, setIsEditingPhoto] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -320,7 +323,15 @@ const Home: React.FC<HomeProps> = ({ player, matches, onPlayerUpdate }) => {
                 <User size={180} className="text-slate-700 mb-10 opacity-50" />
               )}
           </div>
+          
       </div>
+
+      {/* 2. ADICIONADO BANNER AQUI (Entre a foto e as estatísticas) */}
+      {onNavigateToMatch && (
+        <div className="px-4 mt-2">
+            <MatchDayBanner onNavigate={onNavigateToMatch} />
+        </div>
+      )}
 
       <div className="grid grid-cols-4 gap-2 px-4 mb-8 mt-2">
          <StatsBox label="TÍTULOS" value={stats.titles} color="text-emerald-400" subtext={`_`} />

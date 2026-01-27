@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useMemo } from 'react';
-import { GameStatus, Match, GamePhase, Standing, MatchStatus, Game, PlayerPosition } from '../types';
+import { GameStatus, Match, GamePhase, Standing, MatchStatus, Game, PlayerPosition, Goal } from '../types';
 import { matchService } from '../services/matchService';
 import LiveMatchControl from './LiveMatchControl';
 import { ArrowLeft, Trophy, List, PlayCircle, CheckCircle2, Archive, AlertTriangle, Trash2, ChevronDown, ChevronUp, Zap, Shield, Footprints, Scale } from 'lucide-react';
@@ -117,6 +117,70 @@ const ActiveMatchDashboard: React.FC<ActiveMatchDashboardProps> = ({ matchId, on
 
   const isEventFinished = match.status === MatchStatus.FINISHED;
   const hasFinishedGames = match.games.some(g => g.status === GameStatus.FINISHED);
+  
+  // --- NOVA FUNÇÃO OTIMISTA ---
+  const handleScoreGoal = async (gameId: string, teamId: string, scorerId: string, assistId?: string | null) => {
+      if (!match) return;
+
+      // 1. Backup do estado atual (para desfazer se der erro)
+      const previousMatchState = JSON.parse(JSON.stringify(match));
+
+      // 2. Atualização Otimista (Muda a tela AGORA)
+      setMatch((prev) => {
+          if (!prev) return undefined;
+          
+          // Clona o objeto de forma segura
+          const newMatch = { ...prev };
+          
+          // Cria um Gol Temporário (ID falso só para renderizar)
+          const tempGoal: any = {
+              id: `temp-${Date.now()}`,
+              gameId,
+              teamId,
+              scorerId,
+              assistId: assistId || undefined,
+              minute: new Date().getMinutes() // Minuto aproximado
+          };
+
+          // Adiciona na lista de gols
+          newMatch.goals = [...(newMatch.goals || []), tempGoal];
+
+          // Atualiza o Placar do Jogo
+          newMatch.games = newMatch.games.map(g => {
+              if (g.id === gameId) {
+                  return {
+                      ...g,
+                      homeScore: g.homeTeamId === teamId ? g.homeScore + 1 : g.homeScore,
+                      awayScore: g.awayTeamId === teamId ? g.awayScore + 1 : g.awayScore
+                  };
+              }
+              return g;
+          });
+
+          return newMatch;
+      });
+
+      // 3. Envia para o Supabase (Background)
+      try {
+          // Nota: assistId || undefined converte 'null' ou 'none' para undefined
+          const updatedMatchFromServer = await matchService.scoreGoal(
+              match.id, 
+              gameId, 
+              teamId, 
+              scorerId, 
+              assistId || undefined
+          );
+          
+          // 4. Sucesso: O servidor devolve os dados reais (com ID verdadeiro do gol)
+          setMatch(updatedMatchFromServer);
+          
+      } catch (error) {
+          // 5. Erro: Rollback (Desfaz tudo)
+          console.error("Erro ao salvar gol:", error);
+          setMatch(previousMatchState);
+          alert("Erro de conexão! O gol não foi salvo. Verifique sua internet.");
+      }
+  };
 
   const displayOrder = [
       { phase: GamePhase.PHASE_1, label: 'Fase 1 (Pontos Corridos)', color: 'text-green-500 border-green-500' },
@@ -124,6 +188,7 @@ const ActiveMatchDashboard: React.FC<ActiveMatchDashboardProps> = ({ matchId, on
       { phase: GamePhase.TIE_BREAKER, label: 'Desempate (Pênaltis)', color: 'text-yellow-500 border-yellow-500' },
       { phase: GamePhase.THIRD_PLACE, label: 'Disputa de 3º Lugar', color: 'text-blue-400 border-blue-400' },
       { phase: GamePhase.FINAL, label: 'Grande Final', color: 'text-yellow-500 border-yellow-500' }
+            
   ];
 
   return (
@@ -132,7 +197,7 @@ const ActiveMatchDashboard: React.FC<ActiveMatchDashboardProps> = ({ matchId, on
         <div className="flex items-center gap-3"><button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-full text-slate-400 transition-colors"><ArrowLeft size={24} /></button><div><h2 className="text-2xl font-bold text-white flex items-center gap-2">{isEventFinished ? (<div className="px-2 py-0.5 rounded bg-slate-700 text-slate-300 text-xs uppercase">Finalizado</div>) : (<div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>)} Evento Ativo</h2><p className="text-slate-400 text-sm">{match.type} • {match.location}</p></div></div>
       </div>
 
-      {liveGame && !isEventFinished && (<LiveMatchControl match={match} game={liveGame} onUpdate={handleUpdateMatch} />)}
+      {liveGame && !isEventFinished && (<LiveMatchControl match={match} game={liveGame} onUpdate={handleUpdateMatch} onScoreGoal={handleScoreGoal} />)}
 
       <div className="flex border-b border-slate-700 mb-6"><button onClick={() => setActiveTab('games')} className={`px-6 py-3 font-medium text-sm transition-colors border-b-2 ${activeTab === 'games' ? 'border-green-500 text-white' : 'border-transparent text-slate-400 hover:text-white'}`}><div className="flex items-center gap-2"><List size={16} /> Jogos</div></button><button onClick={() => setActiveTab('standings')} className={`px-6 py-3 font-medium text-sm transition-colors border-b-2 ${activeTab === 'standings' ? 'border-green-500 text-white' : 'border-transparent text-slate-400 hover:text-white'}`}><div className="flex items-center gap-2"><Trophy size={16} /> Classificação</div></button></div>
 

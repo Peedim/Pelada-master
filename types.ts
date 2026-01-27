@@ -53,6 +53,8 @@ export interface Player {
   monthly_delta: number;
   ovr_history: OvrHistoryEntry[];
   featured_achievement_id?: string;
+  _acc?: number; 
+  ovr?: number; 
 }
 
 export interface PlayerFormData extends Omit<Player, 'id' | 'created_at' | 'attributes' | 'accumulators' | 'monthly_delta' | 'ovr_history'>, PlayerAttributes {}

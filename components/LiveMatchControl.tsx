@@ -1,16 +1,16 @@
 import React, { useState, useMemo, useEffect } from 'react';
-import { Game, Match, Player, Goal, GamePhase, PenaltyKick, PlayerPosition } from '../types';
+import { Game, Match, Goal, GamePhase } from '../types';
 import { matchService } from '../services/matchService';
-import { playerService } from '../services/playerService';
-import { Timer, X, CheckCircle, UserPlus, Play, AlertTriangle, Edit2, Zap, Circle, Shield, Target, RotateCcw, Loader2, Shirt } from 'lucide-react';
+import { X, CheckCircle, AlertTriangle, Edit2, Zap, Target, RotateCcw, Loader2, Plus } from 'lucide-react'; // Removidos ícones de timer
 
 interface LiveMatchControlProps {
   match: Match;
   game: Game;
   onUpdate: (updatedMatch: Match) => void;
+  onScoreGoal: (gameId: string, teamId: string, scorerId: string, assistId?: string | null) => Promise<void>;
 }
 
-const LiveMatchControl: React.FC<LiveMatchControlProps> = ({ match, game, onUpdate }) => {
+const LiveMatchControl: React.FC<LiveMatchControlProps> = ({ match, game, onUpdate, onScoreGoal }) => {
   const [scoringTeamId, setScoringTeamId] = useState<string | null>(null);
   const [isEndGameConfirmOpen, setIsEndGameConfirmOpen] = useState(false);
   const [selectedScorer, setSelectedScorer] = useState<string | null>(null);
@@ -29,11 +29,8 @@ const LiveMatchControl: React.FC<LiveMatchControlProps> = ({ match, game, onUpda
 
   const gameGoals = match.goals?.filter(g => g.gameId === game.id) || [];
   
-  // LÓGICA CORRIGIDA PARA DESEMPATE
   const isKnockout = game.phase === GamePhase.FINAL || game.phase === GamePhase.THIRD_PLACE || game.phase === GamePhase.TIE_BREAKER;
   const isDraw = game.homeScore === game.awayScore;
-  
-  // Tie Breaker é SEMPRE disputa de pênaltis, mesmo estando 0-0
   const requiresPenalties = (isKnockout && isDraw) || game.phase === GamePhase.TIE_BREAKER;
   const inPenaltyMode = !!game.penaltyShootout;
   const maxKicks = game.phase === GamePhase.FINAL ? 5 : 3;
@@ -77,10 +74,57 @@ const LiveMatchControl: React.FC<LiveMatchControlProps> = ({ match, game, onUpda
   };
 
   const handleEndGameClick = () => setIsEndGameConfirmOpen(true);
-  const confirmEndGame = async () => { if (isProcessing) return; setIsProcessing(true); const updated = await matchService.endMatch(match.id, game.id); onUpdate(updated); setIsEndGameConfirmOpen(false); setIsProcessing(false); };
-  const openGoalModal = (teamId: string) => { setScoringTeamId(teamId); setSelectedScorer(null); setSelectedAssist(null); setEditingGoalId(null); };
-  const openEditGoalModal = (goal: Goal) => { setEditingGoalId(goal.id); setScoringTeamId(goal.teamId); setSelectedScorer(goal.scorerId); setSelectedAssist(goal.assistId || 'none'); };
-  const confirmGoal = async () => { if (!scoringTeamId || !selectedScorer || isProcessing) return; setIsProcessing(true); const assist = selectedAssist === 'none' ? undefined : selectedAssist; let updated; if (editingGoalId) updated = await matchService.updateGoal(match.id, editingGoalId, selectedScorer, assist || undefined); else updated = await matchService.scoreGoal(match.id, game.id, scoringTeamId, selectedScorer, assist || undefined); onUpdate(updated); setScoringTeamId(null); setEditingGoalId(null); setIsProcessing(false); };
+  
+  const confirmEndGame = async () => { 
+    if (isProcessing) return; 
+    setIsProcessing(true); 
+    const updated = await matchService.endMatch(match.id, game.id); 
+    onUpdate(updated); 
+    setIsEndGameConfirmOpen(false); 
+    setIsProcessing(false); 
+  };
+
+  const openGoalModal = (teamId: string) => { 
+    setScoringTeamId(teamId); 
+    setSelectedScorer(null); 
+    setSelectedAssist(null); 
+    setEditingGoalId(null); 
+  };
+
+  const openEditGoalModal = (goal: Goal) => { 
+    setEditingGoalId(goal.id); 
+    setScoringTeamId(goal.teamId); 
+    setSelectedScorer(goal.scorerId); 
+    setSelectedAssist(goal.assistId || 'none'); 
+  };
+  
+  const confirmGoal = async () => { 
+    if (!scoringTeamId || !selectedScorer) return; 
+    
+    if (editingGoalId) {
+        if (isProcessing) return;
+        setIsProcessing(true);
+        const assist = selectedAssist === 'none' ? undefined : selectedAssist;
+        const updated = await matchService.updateGoal(match.id, editingGoalId, selectedScorer, assist || undefined);
+        onUpdate(updated);
+        setScoringTeamId(null);
+        setEditingGoalId(null);
+        setIsProcessing(false);
+        return;
+    }
+
+    const teamId = scoringTeamId;
+    const scorer = selectedScorer;
+    const assist = selectedAssist === 'none' ? null : selectedAssist;
+
+    setScoringTeamId(null);
+    setEditingGoalId(null);
+    setSelectedScorer(null);
+    setSelectedAssist(null);
+    
+    onScoreGoal(game.id, teamId, scorer, assist);
+  };
+
   const handleStartPenalties = async () => { if (isProcessing) return; setIsProcessing(true); const updated = await matchService.initializePenaltyShootout(match.id, game.id); onUpdate(updated); setIsProcessing(false); };
   const handlePenaltyKick = async (isGoal: boolean) => { if (isProcessing) return; setIsProcessing(true); const history = game.penaltyShootout?.history || []; const kickCount = history.length; const kickerTeamId = kickCount % 2 === 0 ? homeTeam.id : awayTeam.id; const updated = await matchService.registerPenalty(match.id, game.id, kickerTeamId, isGoal); onUpdate(updated); setTimeout(() => setIsProcessing(false), 500); };
   const handleUndoPenalty = async () => { if (isProcessing || !game.penaltyShootout?.history.length) return; setIsProcessing(true); const updated = await matchService.undoLastPenalty(match.id, game.id); onUpdate(updated); setIsProcessing(false); };
@@ -197,7 +241,7 @@ const LiveMatchControl: React.FC<LiveMatchControlProps> = ({ match, game, onUpda
                     <div className="space-y-4">
                         <div><label className="block text-sm text-slate-400 mb-2">Quem fez o gol?</label><div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto custom-scrollbar">{scoringTeam?.players.map(p => (<button key={p.id} onClick={() => setSelectedScorer(p.id)} className={`p-2 text-sm rounded text-left truncate transition-colors border ${selectedScorer === p.id ? 'bg-green-600 text-white border-green-500' : 'bg-slate-700 text-slate-300 border-transparent hover:bg-slate-600'}`}>{p.name}</button>))}</div></div>
                         {selectedScorer && (<div className="animate-fade-in"><label className="block text-sm text-slate-400 mb-2">Quem deu a assistência?</label><div className="grid grid-cols-2 gap-2 max-h-40 overflow-y-auto custom-scrollbar"><button onClick={() => setSelectedAssist('none')} className={`p-2 text-sm rounded text-left transition-colors border ${selectedAssist === 'none' ? 'bg-slate-500 text-white border-slate-400' : 'bg-slate-700 text-slate-300 border-transparent hover:bg-slate-600'}`}>Sem assistência</button>{scoringTeam?.players.filter(p => p.id !== selectedScorer).map(p => (<button key={p.id} onClick={() => setSelectedAssist(p.id)} className={`p-2 text-sm rounded text-left truncate transition-colors border ${selectedAssist === p.id ? 'bg-blue-600 text-white border-blue-500' : 'bg-slate-700 text-slate-300 border-transparent hover:bg-slate-600'}`}>{p.name}</button>))}</div></div>)}
-                        <button onClick={confirmGoal} disabled={!selectedScorer || !selectedAssist || isProcessing} className="w-full mt-4 bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-green-500 text-white py-3 rounded-lg font-bold shadow-lg transition-transform active:scale-95 flex items-center justify-center gap-2">{isProcessing ? <Loader2 size={20} className="animate-spin" /> : <CheckCircle size={20} />}{editingGoalId ? 'Salvar Alterações' : 'Confirmar Gol'}</button>
+                        <button onClick={confirmGoal} disabled={!selectedScorer || !selectedAssist || (editingGoalId ? isProcessing : false)} className="w-full mt-4 bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed hover:bg-green-500 text-white py-3 rounded-lg font-bold shadow-lg transition-transform active:scale-95 flex items-center justify-center gap-2">{isProcessing && editingGoalId ? <Loader2 size={20} className="animate-spin" /> : <CheckCircle size={20} />}{editingGoalId ? 'Salvar Alterações' : 'Confirmar Gol'}</button>
                     </div>
                 </div>
             </div>

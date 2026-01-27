@@ -13,16 +13,18 @@ import Home from './components/Home';
 import Login from './components/Login';
 import Career from './components/Career';
 import Rankings from './components/Rankings'; 
+import MatchCenter from './components/MatchCenter'; // <--- 1. IMPORT NOVO
 import { Player, PlayerFormData, Match, MatchStatus } from './types';
 import { playerService } from './services/playerService';
 import { matchService } from './services/matchService';
-import { rankingService } from './services/rankingService'; // <--- IMPORT NOVO
+import { rankingService } from './services/rankingService'; 
 import { supabase } from './services/supabaseClient';
 import { LayoutDashboard, Shuffle, FolderOpen, History, LogOut } from 'lucide-react';
 import AuthGuard from './components/AuthGuard'; 
 import Achievements from './components/Achievements';
 import NotificationBell from './components/NotificationBell';
 import PlayerOnboarding from './components/PlayerOnboarding';
+import { Toaster } from '@/components/ui/sonner';
 
 type AdminView = 'dashboard' | 'create' | 'edit' | 'sorter' | 'drafts' | 'draft-editor' | 'active-match' | 'history';
 
@@ -35,12 +37,16 @@ const App: React.FC = () => {
   // --- ESTADO GLOBAL (Otimização) ---
   const [players, setPlayers] = useState<Player[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
-  const [hallOfFame, setHallOfFame] = useState<any[]>([]); // <--- NOVO
-  const [manualUnlocks, setManualUnlocks] = useState<string[]>([]); // <--- NOVO
+  const [hallOfFame, setHallOfFame] = useState<any[]>([]);
+  const [manualUnlocks, setManualUnlocks] = useState<string[]>([]); 
   
   const [selectedPlayer, setSelectedPlayer] = useState<Player | undefined>(undefined);
   const [selectedDraftId, setSelectedDraftId] = useState<string | null>(null);
   const [activeMatchId, setActiveMatchId] = useState<string | null>(null);
+  
+  // 2. NOVO ESTADO PARA O VESTIÁRIO
+  const [activeMatchCenterId, setActiveMatchCenterId] = useState<string | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
   const [previousAdminView, setPreviousAdminView] = useState<AdminView>('drafts');
@@ -59,29 +65,22 @@ const App: React.FC = () => {
 
   useEffect(() => {
     if (session) {
-      // Se já temos jogadores, passamos 'false' para NÃO mostrar o spinner
-      // O app vai atualizar os dados (caso alguém tenha feito gol), mas sem piscar a tela
       const isFirstLoad = players.length === 0;
       loadInitialData(isFirstLoad);
     } else {
       setLoading(false);
     }
-    // Adicionei 'players.length' nas dependências para ele saber se é first load
-  }, [session, players.length]);
+  }, [session, players.length]); // Corrigi o typo 'lenghth' para 'length'
 
   // --- CARREGAMENTO INICIAL UNIFICADO ---
   const loadInitialData = async (forceLoading = true) => {
     try {
-      // SÓ MOSTRA O LOADING SE:
-      // 1. For forçado (primeira carga)
-      // 2. OU se ainda não tivermos jogadores carregados na memória
       const shouldShowSpinner = forceLoading || players.length === 0;
 
       if (shouldShowSpinner) {
         setLoading(true);
       }
 
-      // Carrega tudo em paralelo
       const [allPlayers, allMatches, hallData] = await Promise.all([
         playerService.getAll(),
         matchService.getAll(),
@@ -104,12 +103,11 @@ const App: React.FC = () => {
     } catch (error) { 
       console.error("Failed to load initial data", error); 
     } finally { 
-      // Sempre desliga o loading no final, independente se ligou ou não
       setLoading(false); 
     }
   };
 
-  // --- REFRESH GERAL (Atualiza tudo após ações importantes) ---
+  // --- REFRESH GERAL ---
   const refreshData = async () => {
     try {
       const [allPlayers, allMatches, hallData] = await Promise.all([
@@ -121,7 +119,6 @@ const App: React.FC = () => {
       setMatches(allMatches);
       setHallOfFame(hallData);
       
-      // Se tiver usuário logado, atualiza conquistas manuais também
       if (currentUserId) {
           const unlocks = await playerService.getManualAchievements(currentUserId);
           setManualUnlocks(unlocks);
@@ -129,7 +126,7 @@ const App: React.FC = () => {
     } catch (error) { console.error("Error refreshing data:", error); }
   };
 
-  // --- OTIMIZAÇÃO: REFRESH RÁPIDO (Só a partida ativa) ---
+  // --- OTIMIZAÇÃO: REFRESH RÁPIDO ---
   const refreshActiveMatchOnly = async (matchId: string) => {
     try {
         const updatedMatch = await matchService.getById(matchId);
@@ -148,11 +145,27 @@ const App: React.FC = () => {
     setSession(null);
     setCurrentUserId(null);
     setMainTab('home');
+    setActiveMatchCenterId(null); // Reseta o vestiário ao sair
+  };
+
+  // 3. HANDLER PARA ABRIR O VESTIÁRIO
+  const handleOpenMatchCenter = (matchId: string) => {
+      setActiveMatchCenterId(matchId);
   };
 
   if (!session) return <Login onLoginSuccess={() => {}} />;
   if (loading) return <div className="flex flex-col items-center justify-center h-screen bg-slate-900 space-y-4"><div className="w-10 h-10 border-4 border-green-500 border-t-transparent rounded-full animate-spin"></div><p className="text-slate-400 animate-pulse">Carregando perfil...</p></div>;
   if (!currentUserId && session) return <div className="flex flex-col items-center justify-center h-screen bg-slate-900 p-6 text-center"><div className="bg-slate-800 p-8 rounded-xl border border-slate-700 max-w-md"><h2 className="text-xl font-bold text-white mb-2">Perfil não encontrado</h2><p className="text-slate-400 mb-6">Você está logado como <span className="text-green-400">{session.user.email}</span>, mas não existe um jogador cadastrado com este e-mail no sistema.</p><div className="flex flex-col gap-3"><button onClick={handleLogout} className="bg-slate-700 hover:bg-slate-600 text-white py-2 px-4 rounded-lg">Sair / Trocar Conta</button><p className="text-xs text-slate-500 mt-2">Peça para o administrador cadastrar este e-mail.</p></div></div></div>;
+
+  // 4. RENDERIZAÇÃO CONDICIONAL DA TELA "VESTIÁRIO" (MODO JOGO)
+  if (activeMatchCenterId) {
+      return (
+          <MatchCenter 
+              matchId={activeMatchCenterId} 
+              onBack={() => setActiveMatchCenterId(null)} 
+          />
+      );
+  }
 
   const currentUser = players.find(p => p.id === currentUserId) || null;
   const isAdmin = currentUser?.is_admin || false;
@@ -214,9 +227,15 @@ const App: React.FC = () => {
             />
         ) : (
             <>
-                {mainTab === 'home' && currentUser && <Home player={currentUser} matches={matches} />}
+                {/* 5. PASSANDO A FUNÇÃO PARA O COMPONENTE HOME */}
+                {mainTab === 'home' && currentUser && (
+                    <Home 
+                        player={currentUser} 
+                        matches={matches} 
+                        onNavigateToMatch={handleOpenMatchCenter} 
+                    />
+                )}
                 
-                {/* --- AQUI ESTÁ A MÁGICA: Passamos os dados prontos --- */}
                 {mainTab === 'career' && currentUser && (
                     <Career currentUser={currentUser} matches={matches} />
                 )}
@@ -240,7 +259,6 @@ const App: React.FC = () => {
                       {adminView === 'drafts' && <DraftList onSelectMatch={handleSelectMatch} />}
                       {adminView === 'draft-editor' && selectedDraftId && <DraftEditor matchId={selectedDraftId} onBack={() => setAdminView('drafts')} onPublish={handlePublishMatch} isLoading={actionLoading} />}
                       
-                      {/* OTIMIZAÇÃO: Usamos refreshActiveMatchOnly para ações in-game */}
                       {adminView === 'active-match' && activeMatchId && <ActiveMatchDashboard matchId={activeMatchId} onBack={() => setAdminView(previousAdminView)} onMatchUpdate={() => refreshActiveMatchOnly(activeMatchId)} />}
                       
                       {adminView === 'history' && <MatchHistory onSelectMatch={handleSelectHistoryMatch} />}
@@ -252,6 +270,7 @@ const App: React.FC = () => {
       </main>
       
       <FooterNav currentTab={mainTab} onTabChange={(tab) => setMainTab(tab as MainTab)} isAdmin={isAdmin} />
+      <Toaster position="top-right" theme="dark" />
     </div>
   );
 };

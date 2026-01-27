@@ -12,7 +12,7 @@ interface PlayerOnboardingProps {
 const POSITIONS = [
   { id: 'Goleiro', label: 'Goleiro', icon: Anchor, desc: 'O guardião da meta.' },
   { id: 'Defensor', label: 'Defensor', icon: Shield, desc: 'Zaga, Lateral ou Volante.' },
-  { id: 'Meio', label: 'Meio-Campo', icon: Activity, desc: 'Armação e controle de jogo.' },
+  { id: 'Meio-Campo', label: 'Meio-Campo', icon: Activity, desc: 'Armação e controle de jogo.' },
   { id: 'Atacante', label: 'Atacante', icon: Target, desc: 'Fazer golos é sua missão.' },
 ];
 
