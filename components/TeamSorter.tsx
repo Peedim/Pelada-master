@@ -6,6 +6,7 @@ import { presetService, PlayerPreset } from '../services/presetService';
 import { Calendar, Users, CheckSquare, Square, Wand2, Trophy, Zap, Save, CheckCircle, Shirt, Download, Image as ImageIcon, Loader2, Bookmark, Trash2, Plus } from 'lucide-react';
 import * as htmlToImage from 'html-to-image';
 import { saveAs } from 'file-saver';
+import { formatMatchDate } from '../utils/dateUtils';
 
 interface TeamSorterProps {
   players: Player[];
@@ -205,7 +206,7 @@ const TeamSorter: React.FC<TeamSorterProps> = ({ players, onDraftSaved }) => {
           {generatedTeams ? (
             <div className="space-y-4 animate-slide-up">
               <div ref={exportRef} className="bg-slate-900 p-4 rounded-xl border border-slate-800">
-                  <div className="text-center mb-4 md:hidden"><h2 className="text-xl font-bold text-white mb-1">Sorteio do Baba</h2><p className="text-slate-400 text-sm">{new Date(config.date).toLocaleDateString('pt-BR')} - {config.location}</p></div>
+                  <div className="text-center mb-4 md:hidden"><h2 className="text-xl font-bold text-white mb-1">Sorteio do Baba</h2><p className="text-slate-400 text-sm">{formatMatchDate(config.date)} - {config.location}</p></div>
                   {/* REMOVIDO A TABELA SEPARADA DE GOLEIROS AQUI */}
                   
                   <div className="flex items-center justify-between mb-3"><h3 className="text-lg font-bold text-white flex items-center gap-2"><Trophy className="text-blue-400" size={18} /> Times</h3><span className="text-slate-400 text-xs bg-slate-800 px-2 py-1 rounded">Média OVR: {Math.round(generatedTeams.reduce((a, b) => a + b.avgOvr, 0) / generatedTeams.length)}</span></div>

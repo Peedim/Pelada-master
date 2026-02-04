@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Match, MatchStatus, Player, Game, Goal, GamePhase } from '../types';
 import { matchService } from '../services/matchService';
 import { Trophy, Calendar, AlertCircle, ChevronDown, ChevronUp, Users, Activity, Zap, Medal, Star } from 'lucide-react';
+import { formatMatchDate } from '../utils/dateUtils';
 
 interface MatchHistoryProps {
   onSelectMatch: (matchId: string) => void;
@@ -110,7 +111,7 @@ const MatchHistory: React.FC<MatchHistoryProps> = ({ onSelectMatch }) => {
                         {match.type}
                       </span>
                       <span className="text-xs text-slate-500 flex items-center gap-1">
-                        <Calendar size={12} /> {new Date(match.date).toLocaleDateString()}
+                        <Calendar size={12} /> {formatMatchDate(match.date)}
                       </span>
                     </div>
                     <h3 className="text-lg font-bold text-white mb-1">Pelada em {match.location}</h3>

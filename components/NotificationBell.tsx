@@ -5,6 +5,7 @@ import { matchService } from '../services/matchService';
 import { rankingService } from '../services/rankingService';
 import { playerService } from '../services/playerService';
 import { calculatePlayerStats, ACHIEVEMENTS_LIST } from '../data/achievements';
+import { formatMatchDate } from '../utils/dateUtils';
 
 interface Notification {
   id: string;
@@ -187,7 +188,7 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ currentUser, onNavi
                                  </h4>
                                  <p className="text-[10px] text-slate-400 mt-0.5 leading-tight">{notif.message}</p>
                                  <span className="text-[9px] text-slate-600 mt-1 block">
-                                     {new Date(notif.timestamp).toLocaleDateString()} • {new Date(notif.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                                     {formatMatchDate(notif.timestamp)} • {new Date(notif.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
                                  </span>
                              </div>
                          </div>

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { matchService } from '../services/matchService';
 import { Match, MatchStatus } from '../types';
 import { Calendar, ChevronRight, Zap } from 'lucide-react';
+import { formatMatchDate } from '../utils/dateUtils';
 
 interface MatchDayBannerProps {
   onNavigate: (matchId: string) => void;
@@ -54,7 +55,7 @@ const MatchDayBanner: React.FC<MatchDayBannerProps> = ({ onNavigate }) => {
                 </span>
               )}
               <span className="text-slate-400 text-xs flex items-center gap-1">
-                <Calendar size={10} /> {new Date(activeMatch.date).toLocaleDateString('pt-BR')}
+                <Calendar size={10} /> {formatMatchDate(activeMatch.date)}
               </span>
             </div>
             

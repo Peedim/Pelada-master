@@ -4,6 +4,7 @@ import { matchService } from '../services/matchService';
 import { Trophy, ChevronDown, ChevronUp, Zap, Image as ImageIcon, Download, Loader2, Camera, Medal, Star, Activity, Users } from 'lucide-react';
 import { saveAs } from 'file-saver';
 import { imageService } from '../services/imageService';
+import { formatMatchDate } from '../utils/dateUtils';
 
 interface CareerProps {
   currentUser: Player;
@@ -34,8 +35,7 @@ const Career: React.FC<CareerProps> = ({ currentUser, matches: allMatches }) => 
   const groupedMatches = useMemo(() => {
     const groups: Record<string, Match[]> = {};
     myHistory.forEach(match => {
-      const date = new Date(match.date);
-      const monthYear = date.toLocaleString('pt-BR', { month: 'long' }).toUpperCase();
+      const monthYear = formatMatchDate(match.date);
       if (!groups[monthYear]) groups[monthYear] = [];
       groups[monthYear].push(match);
     });
@@ -107,7 +107,7 @@ const Career: React.FC<CareerProps> = ({ currentUser, matches: allMatches }) => 
           isChampion, 
           championName,
           myTeamName,
-          dateDay: new Date(match.date).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: '2-digit' })
+          dateDay: formatMatchDate(match.date)
       };
   };
 

@@ -5,6 +5,7 @@ import { playerService } from '../services/playerService';
 import { ArrowLeft, Trash2, Plus, Play, Trophy, UserPlus, X, Zap, Loader2, AlertTriangle, Image as ImageIcon, Shirt } from 'lucide-react';
 import * as htmlToImage from 'html-to-image';
 import { saveAs } from 'file-saver';
+import { formatMatchDate } from '../utils/dateUtils';
 
 interface DraftEditorProps {
   matchId: string;
@@ -67,7 +68,7 @@ const DraftEditor: React.FC<DraftEditorProps> = ({ matchId, onBack, onPublish, i
         </div>
 
         <div ref={exportRef} className="bg-slate-900 p-4 rounded-xl border border-slate-800/50">
-            <div className="text-center mb-6"><h2 className="text-2xl font-bold text-white tracking-tight uppercase">Escalação Oficial</h2><p className="text-slate-400 text-sm">{new Date(match.date).toLocaleDateString()} - {match.location}</p></div>
+            <div className="text-center mb-6"><h2 className="text-2xl font-bold text-white tracking-tight uppercase">Escalação Oficial</h2><p className="text-slate-400 text-sm">{formatMatchDate(match.date)} - {match.location}</p></div>
             
             {/* REMOVIDO TABELA SEPARADA DE GOLEIROS AQUI */}
 

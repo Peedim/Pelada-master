@@ -144,6 +144,7 @@ export const playerService = {
   },
 
   create: async (formData: PlayerFormData): Promise<Player> => {
+    // 1. Extraímos o initial_ovr que veio do formulário (manual)
     const {
       pace,
       shooting,
@@ -159,9 +160,13 @@ export const playerService = {
       initial_ovr,
     } = formData;
 
+    // 2. Verificamos se há atributos definidos
     const totalAttributes =
       (pace || 0) + (shooting || 0) + (passing || 0) + (defending || 0);
 
+    // 3. Lógica Híbrida:
+    // Se tiver atributos > 0, calcula matematicamente.
+    // Se atributos == 0 (Pré-cadastro), usa o initial_ovr manual.
     let finalOvr = initial_ovr;
 
     if (totalAttributes > 0) {
@@ -186,7 +191,7 @@ export const playerService = {
           shirt_number: shirt_number || null,
           photo_url: photo_url || null,
           is_admin: !!is_admin,
-          initial_ovr: finalOvr,
+          initial_ovr: finalOvr, // <--- Usa a variável tratada
           pace: pace || 0,
           shooting: shooting || 0,
           passing: passing || 0,
@@ -227,6 +232,7 @@ export const playerService = {
       initial_ovr,
     } = formData;
 
+    // Mesma lógica de proteção para o update
     const totalAttributes =
       (pace || 0) + (shooting || 0) + (passing || 0) + (defending || 0);
 
@@ -318,13 +324,21 @@ export const playerService = {
       position: p.position,
     }));
     
-    // Busca TODOS os jogos para calcular presenças
     const allMatches = await matchService.getAll();
 
-    // 2. Calcula Rankings do Mês Atual (Memória)
-    const monthlyStats = rankingService.getCurrentMonthRankings(
+    // --- LÓGICA DE DATA INTELIGENTE ---
+    const now = new Date();
+    // Se hoje for até o dia 10, consideramos que a virada é referente ao mês passado.
+    const isBeginningOfMonth = now.getDate() <= 10;
+    const targetDate = isBeginningOfMonth 
+        ? new Date(now.getFullYear(), now.getMonth() - 1, 15) // Volta para o mês anterior
+        : now;
+
+    // 2. Calcula Rankings usando a Data Alvo (Corrigido)
+    const monthlyStats = rankingService.getMonthRankings(
       players as Player[],
-      allMatches
+      allMatches,
+      targetDate // Passa a data correta
     );
 
     // 3. Determina os Campeões
@@ -337,9 +351,8 @@ export const playerService = {
       "cleanSheets"
     );
 
-    // 4. Salva no Hall da Fama
-    const now = new Date();
-    const monthKey = now
+    // 4. Salva no Hall da Fama (Usando a Data Alvo)
+    const monthKey = targetDate
       .toLocaleString("pt-BR", { month: "short" })
       .toUpperCase()
       .replace(".", "");
@@ -354,26 +367,21 @@ export const playerService = {
       await rankingService.saveChampions(monthKey, championsToSave);
     }
 
-    // 5. Aplica Evolução de OVR (Com Divisor Dinâmico e Verificação de Inatividade)
+    // 5. Aplica Evolução de OVR
     let count = 0;
-
-    // Filtra apenas jogos do mês atual para contar presença
+    
+    // Filtra jogos usando a Data Alvo
     const currentMonthMatches = allMatches.filter(m => {
         const mDate = new Date(m.date);
-        return mDate.getMonth() === now.getMonth() && mDate.getFullYear() === now.getFullYear();
+        return mDate.getMonth() === targetDate.getMonth() && mDate.getFullYear() === targetDate.getFullYear();
     });
 
     for (const p of playersData) {
-      // Conta quantos jogos o jogador participou neste mês
       const matchesPlayed = currentMonthMatches.filter(m => 
           m.teams.some(t => t.players.some(pl => pl.id === p.id))
       ).length;
-
-      // Define o divisor: Se jogou 0, usa 1 para não quebrar a conta (mas o acc será 0 mesmo)
-      // Se jogou 1, divide por 1. Se jogou 4, divide por 4.
       const divisor = matchesPlayed > 0 ? matchesPlayed : 1;
 
-      // Verifica atividade total para proteção de OVR
       const totalActivity =
         Math.abs(Number(p.pace_acc || 0)) +
         Math.abs(Number(p.shooting_acc || 0)) +
@@ -410,8 +418,10 @@ export const playerService = {
       }
 
       const history = Array.isArray(p.ovr_history) ? [...p.ovr_history] : [];
+      // Sempre grava histórico na virada
+      history.push({ date: new Date().toISOString(), ovr: finalOvr });
+      
       if (finalOvr !== currentOvr) {
-        history.push({ date: new Date().toISOString(), ovr: finalOvr });
         count++;
       }
 
@@ -439,16 +449,21 @@ export const playerService = {
     const { data: players } = await supabase.from("players").select("*");
     if (!players) return [];
 
-    // Busca jogos para calcular o divisor correto na simulação também
     const allMatches = await matchService.getAll();
+    
+    // --- LÓGICA DE DATA INTELIGENTE TAMBÉM NA SIMULAÇÃO ---
     const now = new Date();
+    const isBeginningOfMonth = now.getDate() <= 10;
+    const targetDate = isBeginningOfMonth 
+        ? new Date(now.getFullYear(), now.getMonth() - 1, 15) 
+        : now;
+
     const currentMonthMatches = allMatches.filter(m => {
         const mDate = new Date(m.date);
-        return mDate.getMonth() === now.getMonth() && mDate.getFullYear() === now.getFullYear();
+        return mDate.getMonth() === targetDate.getMonth() && mDate.getFullYear() === targetDate.getFullYear();
     });
 
     const simulation: PlayerUpdateSimulation[] = players.map((p: any) => {
-      // Lógica de divisor dinâmico
       const matchesPlayed = currentMonthMatches.filter(m => 
           m.teams.some(t => t.players.some(pl => pl.id === p.id))
       ).length;
@@ -513,9 +528,9 @@ export const playerService = {
   ): Promise<void> => {
     for (const sim of simulation) {
       const history = sim.player.ovr_history || [];
-      if (sim.newOvr !== sim.oldOvr) {
-        history.push({ date: new Date().toISOString(), ovr: sim.newOvr });
-      }
+      
+      // --- ALTERAÇÃO: SEMPRE GRAVA HISTÓRICO ---
+      history.push({ date: new Date().toISOString(), ovr: sim.newOvr });
 
       await supabase
         .from("players")

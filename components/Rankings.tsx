@@ -12,7 +12,8 @@ interface RankingsProps {
 const Rankings: React.FC<RankingsProps> = ({ players, matches, hallOfFame }) => {
   const [activeTab, setActiveTab] = useState<'monthly' | 'allTime' | 'hall'>('monthly');
   
-  const monthlyRawData = useMemo(() => rankingService.getCurrentMonthRankings(players, matches), [players, matches]);
+  // ATUALIZADO: Agora chama getMonthRankings (compatível com o novo service)
+  const monthlyRawData = useMemo(() => rankingService.getMonthRankings(players, matches), [players, matches]);
   const allTimeRawData = useMemo(() => rankingService.getAllTimeRankings(players, matches), [players, matches]);
 
   // --- LÓGICA DE RANKING E DESEMPATE ---

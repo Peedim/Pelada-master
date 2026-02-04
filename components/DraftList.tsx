@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { Match, MatchStatus } from '../types';
 import { matchService } from '../services/matchService';
 import { Calendar, MapPin, Users, ArrowRight, Trash2, AlertCircle, Loader2, AlertTriangle, PlayCircle, Edit } from 'lucide-react';
+import { formatMatchDate } from '../utils/dateUtils';
 
 interface DraftListProps {
   onSelectMatch: (match: Match) => void; // Mudamos para receber o objeto Match inteiro
@@ -115,7 +116,7 @@ const DraftList: React.FC<DraftListProps> = ({ onSelectMatch }) => {
                                     {match.location || 'Local indefinido'}
                                 </h3>
                                 <p className="text-sm text-slate-400">
-                                    {new Date(match.date).toLocaleDateString()}
+                                    {formatMatchDate(match.date)}
                                 </p>
                             </div>
                             
@@ -165,7 +166,7 @@ const DraftList: React.FC<DraftListProps> = ({ onSelectMatch }) => {
                                     </span>
                                 </div>
                                 <h3 className="text-lg font-bold text-white mb-1 group-hover:text-blue-400 transition-colors">
-                                    {new Date(draft.date).toLocaleDateString()}
+                                    {formatMatchDate(draft.date)}
                                 </h3>
                                 <div className="flex items-center gap-4 text-sm text-slate-400 mt-2">
                                     <span className="flex items-center gap-1.5">
