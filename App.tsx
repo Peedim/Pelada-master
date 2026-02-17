@@ -26,6 +26,7 @@ import NotificationBell from './components/NotificationBell';
 import PlayerOnboarding from './components/PlayerOnboarding';
 import { Toaster } from '@/components/ui/sonner';
 
+
 type AdminView = 'dashboard' | 'create' | 'edit' | 'sorter' | 'drafts' | 'draft-editor' | 'active-match' | 'history';
 
 type MainTab = 'home' | 'career' | 'rankings' | 'achievements' | 'admin';
@@ -148,6 +149,7 @@ const App: React.FC = () => {
     setActiveMatchCenterId(null); // Reseta o vestiário ao sair
   };
 
+
   // 3. HANDLER PARA ABRIR O VESTIÁRIO
   const handleOpenMatchCenter = (matchId: string) => {
       setActiveMatchCenterId(matchId);
@@ -226,6 +228,7 @@ const App: React.FC = () => {
                 onComplete={refreshData} 
             />
         ) : (
+          
             <>
                 {/* 5. PASSANDO A FUNÇÃO PARA O COMPONENTE HOME */}
                 {mainTab === 'home' && currentUser && (

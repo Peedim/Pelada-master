@@ -1,14 +1,13 @@
 import React, { useMemo, useState, useRef } from 'react';
-import { Player, Match, MatchStatus, PlayerFormData } from '../types';
+import { Player, Match, MatchStatus } from '../types';
 import { playerService, calculateWeightedOvr } from '../services/playerService';
 import { matchService } from '../services/matchService';
-import { Zap, TrendingUp, User, Camera, Upload, X, Loader2, Trash2, Check, ChevronsUp, ChevronsDown, AlertTriangle } from 'lucide-react';
+import { Zap, TrendingUp, User, Camera, Upload, Check, ChevronsUp, ChevronsDown, AlertTriangle, Loader2, Trash2 } from 'lucide-react';
 import { ACHIEVEMENTS_LIST } from '../data/achievements';
 import { imageService } from '../services/imageService';
 import MatchDayBanner from './MatchDayBanner';
 import { getSmoothPath, getSmoothAreaPath } from '../utils/graphUtils';
 
-// Removed framer-motion imports
 import { toast } from 'sonner';
 import {
     Dialog,
@@ -31,7 +30,6 @@ const getNameSizeClass = (name: string) => {
 };
 
 const StatsBox = ({ label, value, color, subtext }: { label: string, value: number, color: string, subtext?: string }) => (
-    // Changed motion.div to regular div, removed initial/animate/transition
     <div
         className="bg-slate-800/80 backdrop-blur-sm border border-slate-700/50 rounded-xl p-3 flex flex-col items-center justify-center shadow-lg aspect-square hover:bg-slate-800 transition-colors cursor-default"
     >
@@ -52,6 +50,7 @@ const Home: React.FC<HomeProps> = ({ player, matches, onNavigateToMatch }) => {
     const [isEditingPhoto, setIsEditingPhoto] = useState(false);
     const [isUploading, setIsUploading] = useState(false);
     const [previewImage, setPreviewImage] = useState<string | null>(null);
+    const [selectedFile, setSelectedFile] = useState<File | null>(null); // Novo estado para guardar o arquivo
     const [isDeletePhotoConfirmOpen, setIsDeletePhotoConfirmOpen] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     
@@ -218,17 +217,47 @@ const Home: React.FC<HomeProps> = ({ player, matches, onNavigateToMatch }) => {
         setHoveredPoint(null);
     };
 
-    const handlePhotoUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    // --- NOVA LÓGICA DE UPLOAD ---
+
+    const triggerFileSelect = () => { fileInputRef.current?.click(); };
+
+    const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
-        if (!file || !player) return;
+        if (file) {
+            // Guarda o arquivo real para upload posterior
+            setSelectedFile(file);
+            
+            // Gera preview para a UI
+            const reader = new FileReader();
+            reader.onload = (e) => { setPreviewImage(e.target?.result as string); };
+            reader.readAsDataURL(file);
+        }
+    };
+
+    const cancelPreview = () => { 
+        setPreviewImage(null); 
+        setSelectedFile(null);
+        if (fileInputRef.current) fileInputRef.current.value = ''; 
+    };
+
+    // Função de Salvar Corrigida: Usa o selectedFile para fazer upload no Supabase
+    const confirmSavePhoto = async () => {
+        if (!selectedFile) return;
 
         try {
             setIsUploading(true);
-            const publicUrl = await imageService.uploadImage(file, 'profiles', player.id);
+            
+            // 1. Upload para o Storage (retorna URL pública)
+            const publicUrl = await imageService.uploadImage(selectedFile, 'profiles', player.id);
 
             if (publicUrl) {
+                // 2. Salva a URL no banco de dados
                 await playerService.updatePhoto(player.id, publicUrl);
+                
                 toast.success("Foto atualizada com sucesso!");
+                setPreviewImage(null);
+                setSelectedFile(null);
+                setIsEditingPhoto(false);
                 setTimeout(() => window.location.reload(), 1000);
             } else {
                 toast.error('Erro ao fazer upload da imagem.');
@@ -242,50 +271,22 @@ const Home: React.FC<HomeProps> = ({ player, matches, onNavigateToMatch }) => {
         }
     };
 
-    const confirmSavePhoto = async () => { if (previewImage) await savePhoto(previewImage); };
-    const cancelPreview = () => { setPreviewImage(null); if (fileInputRef.current) fileInputRef.current.value = ''; };
-
-    const savePhoto = async (url: string) => {
+    const confirmRemovePhoto = async () => {
         try {
             setIsUploading(true);
-            const currentPlayerData = await playerService.getAll().then(list => list.find(p => p.id === player.id));
-            if (!currentPlayerData) throw new Error("Jogador não encontrado.");
-            const { attributes, ...rest } = currentPlayerData;
-            const updatePayload: PlayerFormData = {
-                name: rest.name, email: rest.email, position: rest.position, playStyle: rest.playStyle,
-                shirt_number: rest.shirt_number, initial_ovr: rest.initial_ovr, is_admin: rest.is_admin,
-                photo_url: url, pace: attributes.pace, shooting: attributes.shooting, passing: attributes.passing,
-                defending: attributes.defending
-            };
-            await playerService.update(player.id, updatePayload);
-            setPreviewImage(null);
-            setIsEditingPhoto(false);
+            await playerService.updatePhoto(player.id, ''); // Remove URL
+            toast.success("Foto removida!");
             setIsDeletePhotoConfirmOpen(false);
-            toast.success("Perfil atualizado!");
             setTimeout(() => window.location.reload(), 500);
-        } catch (error: any) {
-            console.error(error);
-            toast.error(`Erro: ${error.message}`);
+        } catch (error) {
+             console.error(error);
+             toast.error("Erro ao remover foto");
         } finally {
-            setIsUploading(false);
-        }
-    };
-
-    const confirmRemovePhoto = async () => await savePhoto('');
-
-    const triggerFileSelect = () => { fileInputRef.current?.click(); };
-
-    const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-        const file = event.target.files?.[0];
-        if (file) {
-            const reader = new FileReader();
-            reader.onload = (e) => { setPreviewImage(e.target?.result as string); };
-            reader.readAsDataURL(file);
+             setIsUploading(false);
         }
     };
 
     return (
-        // Changed motion.div to div
         <div 
             className="w-full max-w-lg mx-auto pb-24 pt-2 relative"
         >
@@ -298,7 +299,6 @@ const Home: React.FC<HomeProps> = ({ player, matches, onNavigateToMatch }) => {
             <div className="grid grid-cols-5 px-6 relative z-10 h-[420px] items-end">
                 {/* Lado Esquerdo - Info Textual */}
                 <div className="col-span-2 flex flex-col items-start self-center pb-20 z-20 pl-1">
-                    {/* Changed motion.div to div */}
                     <div 
                         className="flex flex-col items-start w-full mb-2"
                     >
@@ -315,14 +315,12 @@ const Home: React.FC<HomeProps> = ({ player, matches, onNavigateToMatch }) => {
                         </span>
                     </div>
 
-                    {/* Changed motion.h1 to h1 */}
                     <h1 
                         className={`${getNameSizeClass(player.name)} font-black text-white uppercase tracking-tighter mb-2 drop-shadow-lg w-full break-words`}
                     >
                         {player.name}
                     </h1>
 
-                    {/* Changed motion.div to div */}
                     <div 
                         className="flex items-center gap-1.5 text-emerald-400 drop-shadow-md opacity-90"
                     >
@@ -333,7 +331,6 @@ const Home: React.FC<HomeProps> = ({ player, matches, onNavigateToMatch }) => {
                     </div>
 
                     {featuredAchievement && (
-                        // Changed motion.div to div
                         <div 
                             className="mt-3" 
                             title={`Ostentando: ${featuredAchievement.title}`}
@@ -363,7 +360,6 @@ const Home: React.FC<HomeProps> = ({ player, matches, onNavigateToMatch }) => {
                 <div className="col-span-3 relative h-full flex items-end justify-center">
                      <Dialog open={isEditingPhoto} onOpenChange={setIsEditingPhoto}>
                         <DialogTrigger asChild>
-                            {/* Changed/Removed motion component wrapping, using standard div with simple hover */}
                             <div 
                                 className="relative w-full h-full flex items-end justify-center cursor-pointer group transition-transform active:scale-95 hover:scale-[1.02]"
                             >
@@ -439,7 +435,6 @@ const Home: React.FC<HomeProps> = ({ player, matches, onNavigateToMatch }) => {
             </div>
 
             {onNavigateToMatch && (
-                // Changed motion.div to div
                 <div 
                     className="px-4 mt-2"
                 >
@@ -477,13 +472,13 @@ const Home: React.FC<HomeProps> = ({ player, matches, onNavigateToMatch }) => {
                                         </linearGradient>
                                     </defs>
 
-                                    {/* Area Fill - Changed motion.path to path */}
+                                    {/* Area Fill */}
                                     <path
                                         d={chartData.areaPathD}
                                         fill="url(#areaGradient)"
                                     />
 
-                                    {/* Line Path - Changed motion.path to path */}
+                                    {/* Line Path */}
                                     <path 
                                         d={chartData.pathD} 
                                         fill="none" 
@@ -494,7 +489,7 @@ const Home: React.FC<HomeProps> = ({ player, matches, onNavigateToMatch }) => {
                                         className="drop-shadow-lg" 
                                     />
 
-                                    {/* Last Point - Changed motion.circle to circle */}
+                                    {/* Last Point */}
                                     {!hoveredPoint && <circle 
                                         cx={chartData.lastX} 
                                         cy={chartData.lastY} 
