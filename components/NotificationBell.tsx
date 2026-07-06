@@ -49,6 +49,7 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ currentUser, onNavi
       ]);
 
       const storedData = localStorage.getItem(`pelada_user_data_${currentUser.id}`);
+      const isFirstRun = !storedData;
       const knownData = storedData ? JSON.parse(storedData) : { achievementIds: [], lastMatchId: '' };
       
       const savedNotifs = localStorage.getItem(`pelada_notifications_${currentUser.id}`);
@@ -61,7 +62,7 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ currentUser, onNavi
       ACHIEVEMENTS_LIST.forEach(achiev => {
         if (achiev.condition(stats) || manualUnlocks.includes(achiev.id)) {
           currentUnlockedIds.push(achiev.id);
-          if (!knownData.achievementIds.includes(achiev.id)) {
+          if (!isFirstRun && !knownData.achievementIds.includes(achiev.id)) {
             newAchievements.push({
               id: `notif_achiev_${achiev.id}_${Date.now()}`,
               type: 'achievement',
@@ -80,7 +81,7 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ currentUser, onNavi
         .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())[0];
 
       const newEvents: Notification[] = [];
-      if (lastFinishedMatch && lastFinishedMatch.id !== knownData.lastMatchId) {
+      if (!isFirstRun && lastFinishedMatch && lastFinishedMatch.id !== knownData.lastMatchId) {
          newEvents.push({
              id: `notif_match_${lastFinishedMatch.id}`,
              type: 'event',
@@ -90,10 +91,19 @@ const NotificationBell: React.FC<NotificationBellProps> = ({ currentUser, onNavi
              read: false,
              actionTab: 'career'
          });
-         knownData.lastMatchId = lastFinishedMatch.id;
       }
 
-      if (newAchievements.length > 0 || newEvents.length > 0) {
+      if (isFirstRun) {
+        // Inicialização silenciosa na primeira execução (conhecendo o estado atual de conquistas e partidas sem gerar notificações retroativas)
+        knownData.achievementIds = currentUnlockedIds;
+        knownData.lastMatchId = lastFinishedMatch ? lastFinishedMatch.id : '';
+        localStorage.setItem(`pelada_user_data_${currentUser.id}`, JSON.stringify(knownData));
+        setNotifications(currentNotifications);
+        setUnreadCount(0);
+      } else if (newAchievements.length > 0 || newEvents.length > 0) {
+        if (lastFinishedMatch) {
+          knownData.lastMatchId = lastFinishedMatch.id;
+        }
         const updatedNotifications = [...newEvents, ...newAchievements, ...currentNotifications];
         const trimmedNotifications = updatedNotifications.slice(0, 10);
         setNotifications(trimmedNotifications);

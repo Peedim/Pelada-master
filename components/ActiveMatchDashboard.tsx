@@ -46,13 +46,26 @@ const ActiveMatchDashboard: React.FC<ActiveMatchDashboardProps> = ({ matchId, on
   const handleCreateTieBreaker = async () => {
       if (!match) return;
       const standings = matchService.calculateStandings(match);
-      const t2 = standings[1];
-      const t3 = standings[2];
       
-      if (!t2 || !t3) return;
+      let homeTeamId = '';
+      let awayTeamId = '';
+      
+      if (match.type === 'Triangular') {
+          const t1 = standings[0];
+          const t2 = standings[1];
+          if (!t1 || !t2) return;
+          homeTeamId = t1.teamId;
+          awayTeamId = t2.teamId;
+      } else {
+          const t2 = standings[1];
+          const t3 = standings[2];
+          if (!t2 || !t3) return;
+          homeTeamId = t2.teamId;
+          awayTeamId = t3.teamId;
+      }
       
       try {
-          const updated = await matchService.createTieBreakerGame(match.id, t2.teamId, t3.teamId);
+          const updated = await matchService.createTieBreakerGame(match.id, homeTeamId, awayTeamId);
           setMatch({ ...updated });
           setActiveTab('games'); 
       } catch (e) {
@@ -76,17 +89,43 @@ const ActiveMatchDashboard: React.FC<ActiveMatchDashboardProps> = ({ matchId, on
   }, [match]);
 
   const needsTieBreaker = useMemo(() => {
-      if (!match || match.type !== 'Quadrangular') return false; 
-      const phase2Games = match.games.filter(g => g.phase === GamePhase.PHASE_1 || g.phase === GamePhase.PHASE_2);
-      const allFinished = phase2Games.every(g => g.status === GameStatus.FINISHED);
-      if (!allFinished) return false;
-      const hasTieBreaker = match.games.some(g => g.phase === GamePhase.TIE_BREAKER);
-      if (hasTieBreaker) return false;
-      const s = matchService.calculateStandings(match);
-      if (s.length < 3) return false;
-      const p2 = s[1];
-      const p3 = s[2];
-      return p2.points === p3.points;
+      if (!match) return false;
+      
+      if (match.type === 'Triangular') {
+          const phase1Games = match.games.filter(g => g.phase === GamePhase.PHASE_1);
+          const allFinished = phase1Games.every(g => g.status === GameStatus.FINISHED);
+          if (!allFinished) return false;
+          
+          const hasTieBreaker = match.games.some(g => g.phase === GamePhase.TIE_BREAKER);
+          if (hasTieBreaker) return false;
+          
+          const s = matchService.calculateStandings(match);
+          if (s.length < 2) return false;
+          
+          const p1 = s[0];
+          const p2 = s[1];
+          
+          return (
+              p1.points === p2.points &&
+              p1.wins === p2.wins &&
+              p1.goalDiff === p2.goalDiff &&
+              p1.goalsFor === p2.goalsFor
+          );
+      } else {
+          const phase2Games = match.games.filter(g => g.phase === GamePhase.PHASE_1 || g.phase === GamePhase.PHASE_2);
+          const allFinished = phase2Games.every(g => g.status === GameStatus.FINISHED);
+          if (!allFinished) return false;
+          
+          const hasTieBreaker = match.games.some(g => g.phase === GamePhase.TIE_BREAKER);
+          if (hasTieBreaker) return false;
+          
+          const s = matchService.calculateStandings(match);
+          if (s.length < 3) return false;
+          
+          const p2 = s[1];
+          const p3 = s[2];
+          return p2.points === p3.points;
+      }
   }, [match]);
 
   const getTeamName = (id: string) => { if (id === 'TBD') return 'A Definir'; return match?.teams.find(t => t.id === id)?.name || 'Desconhecido'; };
@@ -204,7 +243,22 @@ const ActiveMatchDashboard: React.FC<ActiveMatchDashboardProps> = ({ matchId, on
       <div className="min-h-[400px]">
         {needsTieBreaker && !isEventFinished && activeTab === 'standings' && (
             <div className="bg-yellow-900/20 border border-yellow-700 rounded-lg p-4 mb-6 flex flex-col sm:flex-row items-center justify-between gap-4 animate-scale-up">
-                <div className="flex items-center gap-3"><div className="bg-yellow-600/20 p-2 rounded-full"><Scale className="text-yellow-500" size={24} /></div><div><h4 className="text-yellow-500 font-bold">Empate no 2º Lugar!</h4><p className="text-slate-400 text-xs">O 2º e 3º colocados têm a mesma pontuação. Pelas regras, é necessário um desempate.</p></div></div>
+                <div className="flex items-center gap-3">
+                    <div className="bg-yellow-600/20 p-2 rounded-full">
+                        <Scale className="text-yellow-500" size={24} />
+                    </div>
+                    <div>
+                        <h4 className="text-yellow-500 font-bold">
+                            {match.type === 'Triangular' ? 'Empate no Título!' : 'Empate no 2º Lugar!'}
+                        </h4>
+                        <p className="text-slate-400 text-xs font-medium">
+                            {match.type === 'Triangular' 
+                                ? 'O 1º e 2º colocados estão perfeitamente empatados em todos os critérios. Pelas regras, é necessário um desempate por pênaltis.' 
+                                : 'O 2º e 3º colocados têm a mesma pontuação. Pelas regras, é necessário um desempate.'
+                            }
+                        </p>
+                    </div>
+                </div>
                 <button onClick={handleCreateTieBreaker} className="bg-yellow-600 hover:bg-yellow-500 text-white px-4 py-2 rounded font-bold shadow-lg transition-all active:scale-95 text-sm whitespace-nowrap">Criar Jogo de Pênaltis</button>
             </div>
         )}
@@ -229,7 +283,16 @@ const ActiveMatchDashboard: React.FC<ActiveMatchDashboardProps> = ({ matchId, on
                                             {/* Time Casa */}
                                             <div className="flex-1 flex items-center justify-end gap-2 text-right">
                                                 <span className={`font-bold text-xs sm:text-base leading-tight ${getTeamTextColor(homeName)}`}>{homeName}</span>
-                                                {game.status === GameStatus.FINISHED && (<span className="text-lg sm:text-xl font-mono text-white bg-slate-900 px-2 rounded">{game.homeScore}</span>)}
+                                                {game.status === GameStatus.FINISHED && (
+                                                    <span className="text-lg sm:text-xl font-mono text-white bg-slate-900 px-2 rounded">
+                                                        {game.homeScore}
+                                                        {game.penaltyShootout && (
+                                                            <span className="text-xs text-yellow-400 font-bold ml-1">
+                                                                ({game.penaltyShootout.homeScore})
+                                                            </span>
+                                                        )}
+                                                    </span>
+                                                )}
                                             </div>
 
                                             {/* VS / Status */}
@@ -239,7 +302,16 @@ const ActiveMatchDashboard: React.FC<ActiveMatchDashboardProps> = ({ matchId, on
 
                                             {/* Time Fora */}
                                             <div className="flex-1 flex items-center justify-start gap-2 text-left">
-                                                {game.status === GameStatus.FINISHED && (<span className="text-lg sm:text-xl font-mono text-white bg-slate-900 px-2 rounded">{game.awayScore}</span>)}
+                                                {game.status === GameStatus.FINISHED && (
+                                                    <span className="text-lg sm:text-xl font-mono text-white bg-slate-900 px-2 rounded">
+                                                        {game.penaltyShootout && (
+                                                            <span className="text-xs text-yellow-400 font-bold mr-1">
+                                                                ({game.penaltyShootout.awayScore})
+                                                            </span>
+                                                        )}
+                                                        {game.awayScore}
+                                                    </span>
+                                                )}
                                                 <span className={`font-bold text-xs sm:text-base leading-tight ${getTeamTextColor(awayName)}`}>{awayName}</span>
                                             </div>
                                         </div>

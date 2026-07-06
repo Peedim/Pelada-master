@@ -30,6 +30,7 @@ export interface PlayerStats {
   monthlyTitles_Goals: number;
   monthlyTitles_Assists: number;
   monthlyTitles_Defense: number;
+  napoliCount: number;
 }
 
 export const calculatePlayerStats = (playerId: string, matches: Match[], hallOfFame: MonthlyChampion[]): PlayerStats => {
@@ -37,7 +38,8 @@ export const calculatePlayerStats = (playerId: string, matches: Match[], hallOfF
     totalMatches: 0, totalEvents: 0, totalWins: 0, totalGoals: 0, totalAssists: 0, totalCleanSheets: 0,
     hatTricks: 0, assistTricks: 0, cleanTricks: 0,
     totalTitles: 0, 
-    monthlyTitles_MVP: 0, monthlyTitles_Goals: 0, monthlyTitles_Assists: 0, monthlyTitles_Defense: 0
+    monthlyTitles_MVP: 0, monthlyTitles_Goals: 0, monthlyTitles_Assists: 0, monthlyTitles_Defense: 0,
+    napoliCount: 0
   };
 
   let currentCleanSheetStreak = 0;
@@ -63,6 +65,8 @@ export const calculatePlayerStats = (playerId: string, matches: Match[], hallOfF
 
     // Processar Jogos
     const games = match.games.filter(g => g.status === 'FINISHED');
+    const myTeamGames = games.filter(g => g.homeTeamId === playerTeam.id || g.awayTeamId === playerTeam.id);
+    let myTeamWinsInEvent = 0;
 
     games.forEach(game => {
       if (game.homeTeamId !== playerTeam.id && game.awayTeamId !== playerTeam.id) return;
@@ -78,7 +82,10 @@ export const calculatePlayerStats = (playerId: string, matches: Match[], hallOfF
          const p = game.penaltyShootout;
          if ((isHome ? p.homeScore : p.awayScore) > (isHome ? p.awayScore : p.homeScore)) isWin = true;
       }
-      if (isWin) stats.totalWins++;
+      if (isWin) {
+        stats.totalWins++;
+        myTeamWinsInEvent++;
+      }
 
       if (oppScore === 0) {
         stats.totalCleanSheets++;
@@ -100,6 +107,11 @@ export const calculatePlayerStats = (playerId: string, matches: Match[], hallOfF
       if (goalsInGame >= 3) stats.hatTricks++;
       if (assistsInGame >= 3) stats.assistTricks++;
     });
+
+    // Se o time do jogador participou dos jogos do evento na noite mas obteve 0 vitórias no evento
+    if (myTeamGames.length > 0 && myTeamWinsInEvent === 0) {
+      stats.napoliCount++;
+    }
   });
 
   hallOfFame.forEach(item => {
@@ -162,8 +174,8 @@ export const ACHIEVEMENTS_LIST: Achievement[] = [
     imageUrl: '/badges/esp/napoli.png', 
     level: 'Esmeralda', 
     targetValue: 1,
-    condition: () => false, 
-    progress: () => 0
+    condition: (stats) => stats.napoliCount >= 1, 
+    progress: (stats) => stats.napoliCount
   },
   {
     id: 'saulo', 

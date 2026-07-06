@@ -308,125 +308,127 @@ const LiveMatchControl: React.FC<LiveMatchControlProps> = ({ match, game, onUpda
         <div className="absolute -top-24 -left-24 w-48 h-48 bg-green-500/10 rounded-full blur-3xl group-hover:bg-green-500/15 transition-all duration-700"></div>
         <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-blue-500/10 rounded-full blur-3xl group-hover:bg-blue-500/15 transition-all duration-700"></div>
 
-        <div className="flex flex-col xl:flex-row items-center justify-between gap-8 mb-8 relative z-10">
-            {/* Home Team */}
-            <div className="flex-1 text-center xl:text-left order-2 xl:order-1 w-full xl:w-auto">
-                 <h3 className={`text-2xl md:text-3xl font-black mb-3 tracking-tight drop-shadow-sm ${getTeamTextColor(homeTeam.name)}`}>{homeTeam.name}</h3>
-                 {showGoalButtons && ( 
-                    <button onClick={() => openGoalModal(homeTeam.id)} 
-                        className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-green-900/30 transition-all active:scale-[0.98] flex items-center justify-center gap-2 mx-auto xl:mx-0 w-full xl:w-auto border border-green-500/30">
-                        <PlusIcon /> GOL
-                    </button> 
-                 )}
-            </div>
+        {!inPenaltyMode && (
+            <div className="flex flex-col xl:flex-row items-center justify-between gap-8 mb-8 relative z-10 animate-fade-in">
+                {/* Home Team */}
+                <div className="flex-1 text-center xl:text-left order-2 xl:order-1 w-full xl:w-auto">
+                     <h3 className={`text-2xl md:text-3xl font-black mb-3 tracking-tight drop-shadow-sm ${getTeamTextColor(homeTeam.name)}`}>{homeTeam.name}</h3>
+                     {showGoalButtons && ( 
+                        <button onClick={() => openGoalModal(homeTeam.id)} 
+                            className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-green-900/30 transition-all active:scale-[0.98] flex items-center justify-center gap-2 mx-auto xl:mx-0 w-full xl:w-auto border border-green-500/30">
+                            <PlusIcon /> GOL
+                        </button> 
+                     )}
+                </div>
 
-            {/* Scoreboard & Timer */}
-            <div className="flex flex-col items-center order-1 xl:order-2">
-                <div className="relative">
-                    {/* Scoreboard Container */}
-                    <div className="flex items-center gap-6 md:gap-8 bg-slate-900/60 px-8 py-5 rounded-2xl border border-slate-700/50 backdrop-blur-sm shadow-xl">
-                        <span className={`text-6xl md:text-7xl font-mono font-bold transition-all duration-500 transform drop-shadow-[0_0_15px_rgba(74,222,128,0.3)] ${animateHome ? 'text-green-400 scale-110' : 'text-white'}`}>{game.homeScore}</span>
-                        <div className="flex flex-col gap-1 items-center">
-                            <span className="text-slate-600 text-3xl font-thin opacity-50">:</span>
+                {/* Scoreboard & Timer */}
+                <div className="flex flex-col items-center order-1 xl:order-2">
+                    <div className="relative">
+                        {/* Scoreboard Container */}
+                        <div className="flex items-center gap-6 md:gap-8 bg-slate-900/60 px-8 py-5 rounded-2xl border border-slate-700/50 backdrop-blur-sm shadow-xl">
+                            <span className={`text-6xl md:text-7xl font-mono font-bold transition-all duration-500 transform drop-shadow-[0_0_15px_rgba(74,222,128,0.3)] ${animateHome ? 'text-green-400 scale-110' : 'text-white'}`}>{game.homeScore}</span>
+                            <div className="flex flex-col gap-1 items-center">
+                                <span className="text-slate-600 text-3xl font-thin opacity-50">:</span>
+                            </div>
+                            <span className={`text-6xl md:text-7xl font-mono font-bold transition-all duration-500 transform drop-shadow-[0_0_15px_rgba(74,222,128,0.3)] ${animateAway ? 'text-green-400 scale-110' : 'text-white'}`}>{game.awayScore}</span>
                         </div>
-                        <span className={`text-6xl md:text-7xl font-mono font-bold transition-all duration-500 transform drop-shadow-[0_0_15px_rgba(74,222,128,0.3)] ${animateAway ? 'text-green-400 scale-110' : 'text-white'}`}>{game.awayScore}</span>
+                        
+                        {/* Game Phase Badge */}
+                        <div className="absolute -top-4 left-1/2 -translate-x-1/2">
+                            {game.phase === GamePhase.FINAL && <span className="bg-gradient-to-r from-yellow-600 to-yellow-500 text-white text-[10px] sm:text-xs font-bold px-3 py-1 rounded-full shadow-lg border border-yellow-400/50 uppercase tracking-wider whitespace-nowrap">Grande Final</span>}
+                            {game.phase === GamePhase.THIRD_PLACE && <span className="bg-slate-600 text-slate-200 text-[10px] sm:text-xs font-bold px-3 py-1 rounded-full shadow-lg border border-slate-500/50 uppercase tracking-wider whitespace-nowrap">Disputa 3º Lugar</span>}
+                            {game.phase === GamePhase.TIE_BREAKER && <span className="bg-red-600 text-white text-[10px] sm:text-xs font-bold px-3 py-1 rounded-full shadow-lg border border-red-400/50 uppercase tracking-wider animate-pulse whitespace-nowrap">Pênaltis</span>}
+                        </div>
                     </div>
-                    
-                    {/* Game Phase Badge */}
-                    <div className="absolute -top-4 left-1/2 -translate-x-1/2">
-                        {game.phase === GamePhase.FINAL && <span className="bg-gradient-to-r from-yellow-600 to-yellow-500 text-white text-[10px] sm:text-xs font-bold px-3 py-1 rounded-full shadow-lg border border-yellow-400/50 uppercase tracking-wider whitespace-nowrap">Grande Final</span>}
-                        {game.phase === GamePhase.THIRD_PLACE && <span className="bg-slate-600 text-slate-200 text-[10px] sm:text-xs font-bold px-3 py-1 rounded-full shadow-lg border border-slate-500/50 uppercase tracking-wider whitespace-nowrap">Disputa 3º Lugar</span>}
-                        {game.phase === GamePhase.TIE_BREAKER && <span className="bg-red-600 text-white text-[10px] sm:text-xs font-bold px-3 py-1 rounded-full shadow-lg border border-red-400/50 uppercase tracking-wider animate-pulse whitespace-nowrap">Pênaltis</span>}
-                    </div>
-                </div>
 
-                {/* Timer Section */}
-                <div className="mt-6 flex flex-col items-center animate-slide-up">
-                    <div className={`flex items-center gap-3 bg-slate-900/40 p-1.5 pr-4 pl-4 rounded-full border mb-3 transition-colors ${timeLeft === 0 ? 'border-red-500/50 bg-red-900/20' : 'border-slate-700/50'}`}>
-                         {isEditingTime ? (
-                             <div className="flex items-center gap-2">
-                                 <input 
-                                    type="number" 
-                                    value={tempMinutes}
-                                    onChange={(e) => setTempMinutes(e.target.value)}
-                                    className="w-16 bg-slate-800 border border-slate-600 text-white rounded px-2 py-1 text-center font-mono focus:border-green-500 focus:outline-none"
-                                    autoFocus
-                                 />
-                                 <span className="text-slate-400 text-sm">min</span>
-                                 <button onClick={saveTimeEdit} className="p-1 bg-green-600 hover:bg-green-500 text-white rounded-full"><CheckCircle size={14} /></button>
-                             </div>
-                         ) : (
-                             <div 
-                                onClick={() => {
-                                    if (!isTimerRunning && (timeLeft === initialTime || timeLeft === 0)) {
-                                        handleTimeEdit();
-                                    }
-                                }} 
-                                className={`group/timer relative flex items-center justify-center px-2 py-1 ${!isTimerRunning && (timeLeft === initialTime || timeLeft === 0) ? 'cursor-pointer' : 'cursor-default'}`}
-                                title={!isTimerRunning && (timeLeft === initialTime || timeLeft === 0) ? "Clique para editar o tempo" : ""}
-                             >
-                                <Clock size={16} className={`mr-2 ${timeLeft < 60 && timeLeft > 0 ? 'text-red-500 animate-pulse' : 'text-slate-400'}`} />
-                                <span className={`text-2xl font-mono font-bold tabular-nums tracking-wider transition-colors 
-                                    ${timeLeft === 0 ? 'text-red-500' : ''}
-                                    ${timeLeft < 60 && timeLeft > 0 ? 'text-red-400' : ''}
-                                    ${!isTimerRunning && timeLeft !== initialTime && timeLeft > 0 ? 'text-yellow-500' : 'text-slate-200'}
-                                    ${!isTimerRunning && (timeLeft === initialTime || timeLeft === 0) ? 'group-hover/timer:text-white' : ''}
-                                `}>
-                                    {formatTime(timeLeft)}
-                                </span>
-                                {!isTimerRunning && (timeLeft === initialTime || timeLeft === 0) && (
-                                    <Edit2 size={12} className="absolute -right-3 top-0 opacity-0 group-hover/timer:opacity-100 text-slate-500 transition-opacity" />
-                                )}
-                             </div>
-                         )}
-                    </div>
-                    
-                    {timeLeft === 0 && (
-                        <div className="text-red-500 font-bold text-sm uppercase tracking-widest mb-3 animate-pulse">Fim da Partida</div>
-                    )}
-
-                    {/* Timer Controls */}
-                    <div className="flex items-center gap-3">
-                        {!isTimerRunning ? (
-                            <button 
-                                onClick={toggleTimer} 
-                                disabled={timeLeft === 0}
-                                className="p-3 bg-green-600 hover:bg-green-500 text-white rounded-full transition-all active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed shadow-lg shadow-green-900/20"
-                                title="Iniciar"
-                            >
-                                <Play size={20} fill="currentColor" />
-                            </button>
-                        ) : (
-                            <button 
-                                onClick={toggleTimer} 
-                                className="p-3 bg-yellow-500 hover:bg-yellow-400 text-slate-900 rounded-full transition-all active:scale-95 shadow-lg shadow-yellow-900/20"
-                                title="Pausar"
-                            >
-                                <Pause size={20} fill="currentColor" />
-                            </button>
+                    {/* Timer Section */}
+                    <div className="mt-6 flex flex-col items-center animate-slide-up">
+                        <div className={`flex items-center gap-3 bg-slate-900/40 p-1.5 pr-4 pl-4 rounded-full border mb-3 transition-colors ${timeLeft === 0 ? 'border-red-500/50 bg-red-900/20' : 'border-slate-700/50'}`}>
+                             {isEditingTime ? (
+                                 <div className="flex items-center gap-2">
+                                     <input 
+                                        type="number" 
+                                        value={tempMinutes}
+                                        onChange={(e) => setTempMinutes(e.target.value)}
+                                        className="w-16 bg-slate-800 border border-slate-600 text-white rounded px-2 py-1 text-center font-mono focus:border-green-500 focus:outline-none"
+                                        autoFocus
+                                     />
+                                     <span className="text-slate-400 text-sm">min</span>
+                                     <button onClick={saveTimeEdit} className="p-1 bg-green-600 hover:bg-green-500 text-white rounded-full"><CheckCircle size={14} /></button>
+                                 </div>
+                             ) : (
+                                 <div 
+                                    onClick={() => {
+                                        if (!isTimerRunning && (timeLeft === initialTime || timeLeft === 0)) {
+                                            handleTimeEdit();
+                                        }
+                                    }} 
+                                    className={`group/timer relative flex items-center justify-center px-2 py-1 ${!isTimerRunning && (timeLeft === initialTime || timeLeft === 0) ? 'cursor-pointer' : 'cursor-default'}`}
+                                    title={!isTimerRunning && (timeLeft === initialTime || timeLeft === 0) ? "Clique para editar o tempo" : ""}
+                                 >
+                                    <Clock size={16} className={`mr-2 ${timeLeft < 60 && timeLeft > 0 ? 'text-red-500 animate-pulse' : 'text-slate-400'}`} />
+                                    <span className={`text-2xl font-mono font-bold tabular-nums tracking-wider transition-colors 
+                                        ${timeLeft === 0 ? 'text-red-500' : ''}
+                                        ${timeLeft < 60 && timeLeft > 0 ? 'text-red-400' : ''}
+                                        ${!isTimerRunning && timeLeft !== initialTime && timeLeft > 0 ? 'text-yellow-500' : 'text-slate-200'}
+                                        ${!isTimerRunning && (timeLeft === initialTime || timeLeft === 0) ? 'group-hover/timer:text-white' : ''}
+                                    `}>
+                                        {formatTime(timeLeft)}
+                                    </span>
+                                    {!isTimerRunning && (timeLeft === initialTime || timeLeft === 0) && (
+                                        <Edit2 size={12} className="absolute -right-3 top-0 opacity-0 group-hover/timer:opacity-100 text-slate-500 transition-opacity" />
+                                    )}
+                                 </div>
+                             )}
+                        </div>
+                        
+                        {timeLeft === 0 && (
+                            <div className="text-red-500 font-bold text-sm uppercase tracking-widest mb-3 animate-pulse">Fim da Partida</div>
                         )}
-                        <button 
-                            onClick={resetTimer} 
-                            className="p-3 bg-slate-700 hover:bg-red-600 text-slate-300 hover:text-white rounded-full transition-all active:scale-95 shadow-lg"
-                            title="Parar / Reiniciar"
-                        >
-                            <Square size={18} fill="currentColor" />
-                        </button>
+
+                        {/* Timer Controls */}
+                        <div className="flex items-center gap-3">
+                            {!isTimerRunning ? (
+                                <button 
+                                    onClick={toggleTimer} 
+                                    disabled={timeLeft === 0}
+                                    className="p-3 bg-green-600 hover:bg-green-500 text-white rounded-full transition-all active:scale-95 disabled:opacity-30 disabled:cursor-not-allowed shadow-lg shadow-green-900/20"
+                                    title="Iniciar"
+                                >
+                                    <Play size={20} fill="currentColor" />
+                                </button>
+                            ) : (
+                                <button 
+                                    onClick={toggleTimer} 
+                                    className="p-3 bg-yellow-500 hover:bg-yellow-400 text-slate-900 rounded-full transition-all active:scale-95 shadow-lg shadow-yellow-900/20"
+                                    title="Pausar"
+                                >
+                                    <Pause size={20} fill="currentColor" />
+                                </button>
+                            )}
+                            <button 
+                                onClick={resetTimer} 
+                                className="p-3 bg-slate-700 hover:bg-red-600 text-slate-300 hover:text-white rounded-full transition-all active:scale-95 shadow-lg"
+                                title="Parar / Reiniciar"
+                            >
+                                <Square size={18} fill="currentColor" />
+                            </button>
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            {/* Away Team */}
-            <div className="flex-1 text-center xl:text-right order-3 w-full xl:w-auto">
-                 <h3 className={`text-2xl md:text-3xl font-black mb-3 tracking-tight drop-shadow-sm ${getTeamTextColor(awayTeam.name)}`}>{awayTeam.name}</h3>
-                 {showGoalButtons && ( 
-                    <button onClick={() => openGoalModal(awayTeam.id)} 
-                        className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-green-900/30 transition-all active:scale-[0.98] flex items-center justify-center gap-2 mx-auto xl:mx-0 w-full xl:w-auto border border-green-500/30">
-                        <PlusIcon /> GOL
-                    </button> 
-                 )}
+                {/* Away Team */}
+                <div className="flex-1 text-center xl:text-right order-3 w-full xl:w-auto">
+                     <h3 className={`text-2xl md:text-3xl font-black mb-3 tracking-tight drop-shadow-sm ${getTeamTextColor(awayTeam.name)}`}>{awayTeam.name}</h3>
+                     {showGoalButtons && ( 
+                        <button onClick={() => openGoalModal(awayTeam.id)} 
+                            className="bg-gradient-to-r from-green-600 to-emerald-600 hover:from-green-500 hover:to-emerald-500 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-green-900/30 transition-all active:scale-[0.98] flex items-center justify-center gap-2 mx-auto xl:mx-0 w-full xl:w-auto border border-green-500/30">
+                            <PlusIcon /> GOL
+                        </button> 
+                     )}
+                </div>
             </div>
-        </div>
+        )}
 
         {requiresPenalties && (
             <div className="mt-8 mb-6 bg-slate-900/60 rounded-xl border border-slate-700/50 p-6 animate-slide-down">
@@ -442,9 +444,17 @@ const LiveMatchControl: React.FC<LiveMatchControlProps> = ({ match, game, onUpda
                 ) : (
                     <div className="space-y-6">
                         <div className="flex items-center justify-between px-4 sm:px-12 bg-slate-950/30 py-6 rounded-xl border border-slate-800/50">
-                             <div className="flex flex-col items-center gap-3 w-1/3"><div className="text-4xl font-mono font-bold text-white">{game.penaltyShootout?.homeScore || 0}</div>{renderPenaltyDots(homeTeam.id)}</div>
-                             <div className="h-16 w-px bg-slate-700"></div>
-                             <div className="flex flex-col items-center gap-3 w-1/3"><div className="text-4xl font-mono font-bold text-white">{game.penaltyShootout?.awayScore || 0}</div>{renderPenaltyDots(awayTeam.id)}</div>
+                             <div className="flex flex-col items-center gap-3 w-1/3">
+                                 <span className={`font-bold text-sm truncate max-w-[120px] sm:max-w-none ${getTeamTextColor(homeTeam.name)}`}>{homeTeam.name}</span>
+                                 <div className="text-4xl font-mono font-bold text-white">{game.penaltyShootout?.homeScore || 0}</div>
+                                 {renderPenaltyDots(homeTeam.id)}
+                             </div>
+                             <div className="h-20 w-px bg-slate-700"></div>
+                             <div className="flex flex-col items-center gap-3 w-1/3">
+                                 <span className={`font-bold text-sm truncate max-w-[120px] sm:max-w-none ${getTeamTextColor(awayTeam.name)}`}>{awayTeam.name}</span>
+                                 <div className="text-4xl font-mono font-bold text-white">{game.penaltyShootout?.awayScore || 0}</div>
+                                 {renderPenaltyDots(awayTeam.id)}
+                             </div>
                         </div>
                         {!isPenaltyWinnerDecided ? (
                             <div className="flex flex-col items-center mt-6 p-6 bg-slate-800/50 rounded-xl border border-slate-700/50 relative">

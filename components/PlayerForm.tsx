@@ -27,14 +27,14 @@ const PlayerForm: React.FC<PlayerFormProps> = ({ initialData, onSubmit, onCancel
     defaultValues: initialData ? {
       ...initialData,
       photo_url: initialData.photo_url || '',
-      is_mensalista: initialData.is_mensalista !== undefined ? initialData.is_mensalista : true
+      is_mensalista: initialData.is_mensalista !== undefined ? initialData.is_mensalista : false
     } : {
       name: '', email: '', 
       position: '' as PlayerPosition, 
       playStyle: '' as PlayStyle,
       initial_ovr: 75,
       photo_url: '', is_admin: false,
-      is_mensalista: true,
+      is_mensalista: false,
       pace: 75, shooting: 75, passing: 75, defending: 75
     }
   });
