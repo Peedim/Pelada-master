@@ -12,11 +12,13 @@ const shuffleArray = <T>(array: T[]): T[] => {
     return newArray;
 };
 
-export const generateTeams = (players: Player[], type: TournamentType): Team[] => {
+export const generateTeams = (players: Player[], type: TournamentType, teamColors?: string[]): Team[] => {
   const numTeams = type === 'Quadrangular' ? 4 : 3;
   
   // Definição das Cores/Nomes
-  const teamNames = ['Time Branco', 'Time Preto', 'Time Vermelho', 'Time Azul'];
+  const teamNames = teamColors 
+    ? teamColors.map(c => `Time ${c}`) 
+    : ['Time Branco', 'Time Preto', 'Time Vermelho', 'Time Azul'];
 
   // 1. Separa Linha e Goleiros
   const linePlayers = players.filter(p => p.position !== PlayerPosition.GOLEIRO);

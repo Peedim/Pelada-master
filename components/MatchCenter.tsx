@@ -48,14 +48,25 @@ const MatchCenter: React.FC<MatchCenterProps> = ({ matchId, onBack }) => {
     loadData();
     const subscription = supabase
       .channel('public:matches')
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'games' }, () => loadData(false))
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'goals' }, () => loadData(false))
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'games' }, () => loadMatchOnly())
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'goals' }, () => loadMatchOnly())
       .subscribe();
     return () => { supabase.removeChannel(subscription); };
   }, [matchId]);
 
   const saveTacticsLocally = (teamId: string, setup: TacticalSetup) => {
     try { localStorage.setItem(`c13_tactics_${matchId}_${teamId}`, JSON.stringify(setup)); } catch (e) { console.error(e); }
+  };
+
+  const loadMatchOnly = async () => {
+    try {
+      const matchData = await matchService.getById(matchId);
+      if (matchData) {
+        setMatch(matchData);
+      }
+    } catch (error) {
+      console.error("Erro ao atualizar dados da partida em tempo real:", error);
+    }
   };
 
   const loadData = async (showLoading = true) => {
@@ -66,22 +77,15 @@ const MatchCenter: React.FC<MatchCenterProps> = ({ matchId, onBack }) => {
       if (!matchData) throw new Error("Partida não encontrada");
       setMatch(matchData);
 
-      // 2. Busca TODAS as partidas para calcular a média de jogos do mês (Lógica Justa)
-      const allMatches = await matchService.getAll();
+      // 2. Busca apenas as contagens consolidadas de partidas do mês atual de forma leve
       const now = new Date();
-      const currentMonthMatches = allMatches.filter(m => {
-          const mDate = new Date(m.date);
-          return mDate.getMonth() === now.getMonth() && mDate.getFullYear() === now.getFullYear();
-      });
+      const countsMap = await matchService.getMonthMatchCounts(now.getFullYear(), now.getMonth());
 
       // Cria um mapa: { 'player_id': qtd_jogos }
       const counts: Record<string, number> = {};
       // Varre todos os times da partida atual para preencher o mapa
       matchData.teams.forEach(t => t.players.forEach(p => {
-          const played = currentMonthMatches.filter(m => 
-              m.teams.some(team => team.players.some(pl => pl.id === p.id))
-          ).length;
-          counts[p.id] = played > 0 ? played : 1; // Evita divisão por zero
+          counts[p.id] = countsMap[p.id] || 1; // Evita divisão por zero
       }));
       setPlayerMatchCounts(counts);
 

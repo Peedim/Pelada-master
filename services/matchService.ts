@@ -72,6 +72,40 @@ const mapDatabaseToMatch = (dbMatch: any): Match => {
 };
 
 export const matchService = {
+  getMonthMatchCounts: async (year: number, month: number): Promise<Record<string, number>> => {
+    const startOfMonth = new Date(year, month, 1).toISOString().split('T')[0];
+    const endOfMonth = new Date(year, month + 1, 0).toISOString().split('T')[0];
+
+    const { data, error } = await supabase
+      .from('matches')
+      .select('id, match_teams (team_players (player_id))')
+      .gte('date', startOfMonth)
+      .lte('date', endOfMonth);
+
+    if (error) {
+      console.error('Erro ao buscar contagens de partidas do mês:', error);
+      return {};
+    }
+
+    const counts: Record<string, number> = {};
+    if (data) {
+      data.forEach((match: any) => {
+        const playersInMatch = new Set<string>();
+        match.match_teams?.forEach((team: any) => {
+          team.team_players?.forEach((tp: any) => {
+            if (tp.player_id) {
+              playersInMatch.add(tp.player_id);
+            }
+          });
+        });
+        playersInMatch.forEach(playerId => {
+          counts[playerId] = (counts[playerId] || 0) + 1;
+        });
+      });
+    }
+    return counts;
+  },
+
   getAll: async (): Promise<Match[]> => {
     const { data, error } = await supabase
       .from('matches')
@@ -396,72 +430,76 @@ export const matchService = {
         if (g.assistId && playerStats[g.assistId]) playerStats[g.assistId].assists++;
     });
 
+    const playerIds = match.teams.flatMap(t => t.players.map(p => p.id));
+    const { data: playersCur, error: playersError } = await supabase
+        .from('players')
+        .select('id, monthly_delta')
+        .in('id', playerIds);
+
+    if (playersError) {
+        console.error('Erro ao buscar dados atuais dos jogadores:', playersError);
+        throw playersError;
+    }
+
+    const playersMap = new Map<string, any>();
+    playersCur?.forEach(p => playersMap.set(p.id, p));
+
+    const updatePromises: Promise<any>[] = [];
+
     for (const team of match.teams) {
         for (const player of team.players) {
             const s = playerStats[player.id];
             if (!s) continue;
 
-            const { data: cur } = await supabase.from('players').select('pace_acc, shooting_acc, passing_acc, defending_acc').eq('id', player.id).single();
+            const cur = playersMap.get(player.id);
             if (!cur) continue;
 
-            const posKey = Object.values(PlayerPosition).includes(player.position as PlayerPosition) ? player.position as PlayerPosition : 'default';
-            const w = OVR_WEIGHTS[posKey] || OVR_WEIGHTS['default'];
+            let dOvr = 0;
 
-            let dPace = 0, dShoot = 0, dPass = 0, dDef = 0;
-
-            dPace += (s.wins * 0.3);
-            dPace += (s.losses * -0.2);
+            dOvr += (s.wins * 0.3);
+            dOvr += (s.losses * -0.2);
 
             if (team.id === championId) {
-                dPace += (1.0 * w.pace);
-                dShoot += (1.0 * w.shooting);
-                dPass += (1.0 * w.passing);
-                dDef += (1.0 * w.defending);
+                dOvr += 1.0;
             }
             if (team.id === lastPlaceId) {
-                dPace -= (1.0 * w.pace);
-                dShoot -= (1.0 * w.shooting);
-                dPass -= (1.0 * w.passing);
-                dDef -= (1.0 * w.defending);
+                dOvr -= 1.0;
             }
 
-            if (player.position === PlayerPosition.GOLEIRO) dDef += (s.cleanSheets * 0.5);
-            else if (player.position === PlayerPosition.DEFENSOR) dDef += (s.cleanSheets * 0.3);
-            else if (player.position === PlayerPosition.MEIO_CAMPO) dDef += (s.cleanSheets * 0.2);
-            else if (player.position === PlayerPosition.ATACANTE) dDef += (s.cleanSheets * 0.1);
+            dOvr += (s.goals * 0.4);
+            dOvr += (s.assists * 0.25);
 
-            dDef += (s.goalsConceded * -0.2);
-
-            let golBonus = 0;
-            if (player.position === PlayerPosition.GOLEIRO) golBonus = 0.1;
-            else if (player.position === PlayerPosition.DEFENSOR) golBonus = 0.2;
-            else if (player.position === PlayerPosition.MEIO_CAMPO) golBonus = 0.3;
-            else if (player.position === PlayerPosition.ATACANTE) golBonus = 0.5;
-            dShoot += (s.goals * golBonus);
-
-            let astBonus = 0;
-            if (player.position === PlayerPosition.GOLEIRO) astBonus = 0.1;
-            else if (player.position === PlayerPosition.DEFENSOR) astBonus = 0.2;
-            else if (player.position === PlayerPosition.MEIO_CAMPO) astBonus = 0.5;
-            else if (player.position === PlayerPosition.ATACANTE) astBonus = 0.3;
-            dPass += (s.assists * astBonus);
+            if (player.position === PlayerPosition.GOLEIRO || player.position === PlayerPosition.DEFENSOR) {
+                dOvr += (s.cleanSheets * 0.4);
+                dOvr += (s.goalsConceded * -0.15);
+            } else {
+                dOvr += (s.cleanSheets * 0.1);
+            }
 
             if (s.goals === 0 && s.assists === 0 && s.matches > 0) {
-                if (player.position === PlayerPosition.GOLEIRO || player.position === PlayerPosition.DEFENSOR) {
-                    dPass -= 0.1; dShoot -= 0.1;
-                } else if (player.position === PlayerPosition.MEIO_CAMPO) {
-                    dPass -= 0.2; dShoot -= 0.1;
-                } else if (player.position === PlayerPosition.ATACANTE) {
-                    dShoot -= 0.2; dPass -= 0.1;
+                if (player.position === PlayerPosition.MEIO_CAMPO || player.position === PlayerPosition.ATACANTE) {
+                    dOvr -= 0.2;
                 }
             }
 
-            await supabase.from('players').update({
-                pace_acc: Number(cur.pace_acc) + dPace,
-                shooting_acc: Number(cur.shooting_acc) + dShoot,
-                passing_acc: Number(cur.passing_acc) + dPass,
-                defending_acc: Number(cur.defending_acc) + dDef,
+            const updatePromise = supabase.from('players').update({
+                monthly_delta: Number(cur.monthly_delta || 0) + dOvr,
+                pace_acc: 0,
+                shooting_acc: 0,
+                passing_acc: 0,
+                defending_acc: 0
             }).eq('id', player.id);
+
+            updatePromises.push(updatePromise);
+        }
+    }
+
+    if (updatePromises.length > 0) {
+        const results = await Promise.all(updatePromises);
+        const errorResult = results.find(r => r.error);
+        if (errorResult) {
+            console.error("Erro ao atualizar acumuladores de jogadores:", errorResult.error);
+            throw errorResult.error;
         }
     }
     return match!;

@@ -71,17 +71,41 @@ const App: React.FC = () => {
     } else {
       setLoading(false);
     }
-  }, [session, players.length]); // Corrigi o typo 'lenghth' para 'length'
+  }, [session]);
 
   // --- CARREGAMENTO INICIAL UNIFICADO ---
   const loadInitialData = async (forceLoading = true) => {
     try {
-      const shouldShowSpinner = forceLoading || players.length === 0;
+      // 1. Tenta carregar do localStorage primeiro para carregamento instantâneo (Stale-While-Revalidate)
+      const cachedPlayers = localStorage.getItem('c13_players');
+      const cachedMatches = localStorage.getItem('c13_matches');
+      const cachedHall = localStorage.getItem('c13_hall_of_fame');
+
+      let hasCache = false;
+      if (cachedPlayers && cachedMatches && cachedHall) {
+        try {
+          const parsedPlayers = JSON.parse(cachedPlayers);
+          const parsedMatches = JSON.parse(cachedMatches);
+          const parsedHall = JSON.parse(cachedHall);
+
+          setPlayers(parsedPlayers);
+          setMatches(parsedMatches);
+          setHallOfFame(parsedHall);
+          hasCache = true;
+          // Desativa o spinner imediatamente já que temos dados locais para exibir
+          setLoading(false);
+        } catch (e) {
+          console.error("Erro ao ler cache local:", e);
+        }
+      }
+
+      const shouldShowSpinner = (forceLoading || players.length === 0) && !hasCache;
 
       if (shouldShowSpinner) {
         setLoading(true);
       }
 
+      // 2. Busca dados atualizados do Supabase
       const [allPlayers, allMatches, hallData] = await Promise.all([
         playerService.getAll(),
         matchService.getAll(),
@@ -91,6 +115,11 @@ const App: React.FC = () => {
       setPlayers(allPlayers);
       setMatches(allMatches);
       setHallOfFame(hallData);
+
+      // 3. Atualiza o cache local
+      localStorage.setItem('c13_players', JSON.stringify(allPlayers));
+      localStorage.setItem('c13_matches', JSON.stringify(allMatches));
+      localStorage.setItem('c13_hall_of_fame', JSON.stringify(hallData));
 
       if (session?.user?.email) {
         const userEmail = session.user.email.toLowerCase();
@@ -119,6 +148,11 @@ const App: React.FC = () => {
       setPlayers(allPlayers);
       setMatches(allMatches);
       setHallOfFame(hallData);
+
+      // Atualiza o cache local
+      localStorage.setItem('c13_players', JSON.stringify(allPlayers));
+      localStorage.setItem('c13_matches', JSON.stringify(allMatches));
+      localStorage.setItem('c13_hall_of_fame', JSON.stringify(hallData));
       
       if (currentUserId) {
           const unlocks = await playerService.getManualAchievements(currentUserId);
@@ -130,12 +164,15 @@ const App: React.FC = () => {
   // --- OTIMIZAÇÃO: REFRESH RÁPIDO ---
   const refreshActiveMatchOnly = async (matchId: string) => {
     try {
-        const updatedMatch = await matchService.getById(matchId);
-        if (updatedMatch) {
-            setMatches(prevMatches => 
-                prevMatches.map(m => m.id === matchId ? updatedMatch : m)
-            );
-        }
+      const updatedMatch = await matchService.getById(matchId);
+      if (updatedMatch) {
+          setMatches(prevMatches => {
+              const newMatches = prevMatches.map(m => m.id === matchId ? updatedMatch : m);
+              // Atualiza o cache de partidas
+              localStorage.setItem('c13_matches', JSON.stringify(newMatches));
+              return newMatches;
+          });
+      }
     } catch (error) {
         console.error("Erro ao atualizar partida individual:", error);
     }
@@ -143,6 +180,10 @@ const App: React.FC = () => {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
+    // Limpa o cache local por segurança
+    localStorage.removeItem('c13_players');
+    localStorage.removeItem('c13_matches');
+    localStorage.removeItem('c13_hall_of_fame');
     setSession(null);
     setCurrentUserId(null);
     setMainTab('home');

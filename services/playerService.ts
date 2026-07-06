@@ -128,6 +128,7 @@ export const playerService = {
     return data.map((p: any) => ({
       ...p,
       playStyle: p.play_style,
+      is_mensalista: p.is_mensalista !== undefined ? p.is_mensalista : true,
       attributes: {
         pace: p.pace,
         shooting: p.shooting,
@@ -144,12 +145,7 @@ export const playerService = {
   },
 
   create: async (formData: PlayerFormData): Promise<Player> => {
-    // 1. Extraímos o initial_ovr que veio do formulário (manual)
     const {
-      pace,
-      shooting,
-      passing,
-      defending,
       position,
       playStyle,
       name,
@@ -158,27 +154,10 @@ export const playerService = {
       photo_url,
       is_admin,
       initial_ovr,
+      is_mensalista,
     } = formData;
 
-    // 2. Verificamos se há atributos definidos
-    const totalAttributes =
-      (pace || 0) + (shooting || 0) + (passing || 0) + (defending || 0);
-
-    // 3. Lógica Híbrida:
-    // Se tiver atributos > 0, calcula matematicamente.
-    // Se atributos == 0 (Pré-cadastro), usa o initial_ovr manual.
-    let finalOvr = initial_ovr;
-
-    if (totalAttributes > 0) {
-      finalOvr = Math.round(
-        calculateWeightedOvr(position as string, {
-          pace,
-          shooting,
-          passing,
-          defending,
-        })
-      );
-    }
+    const finalOvr = Number(initial_ovr) || 60;
 
     const { data, error } = await supabase
       .from("players")
@@ -191,11 +170,12 @@ export const playerService = {
           shirt_number: shirt_number || null,
           photo_url: photo_url || null,
           is_admin: !!is_admin,
-          initial_ovr: finalOvr, // <--- Usa a variável tratada
-          pace: pace || 0,
-          shooting: shooting || 0,
-          passing: passing || 0,
-          defending: defending || 0,
+          is_mensalista: is_mensalista !== undefined ? !!is_mensalista : true,
+          initial_ovr: finalOvr,
+          pace: finalOvr,
+          shooting: finalOvr,
+          passing: finalOvr,
+          defending: finalOvr,
           pace_acc: 0,
           shooting_acc: 0,
           passing_acc: 0,
@@ -211,17 +191,13 @@ export const playerService = {
     return {
       ...data,
       playStyle: data.play_style,
-      attributes: { pace, shooting, passing, defending },
+      attributes: { pace: finalOvr, shooting: finalOvr, passing: finalOvr, defending: finalOvr },
       accumulators: { pace: 0, shooting: 0, passing: 0, defending: 0 },
     };
   },
 
   update: async (id: string, formData: PlayerFormData): Promise<Player> => {
     const {
-      pace,
-      shooting,
-      passing,
-      defending,
       position,
       playStyle,
       name,
@@ -230,24 +206,10 @@ export const playerService = {
       photo_url,
       is_admin,
       initial_ovr,
+      is_mensalista,
     } = formData;
 
-    // Mesma lógica de proteção para o update
-    const totalAttributes =
-      (pace || 0) + (shooting || 0) + (passing || 0) + (defending || 0);
-
-    let finalOvr = initial_ovr;
-
-    if (totalAttributes > 0) {
-      finalOvr = Math.round(
-        calculateWeightedOvr(position as string, {
-          pace,
-          shooting,
-          passing,
-          defending,
-        })
-      );
-    }
+    const finalOvr = Number(initial_ovr) || 60;
 
     const { data, error } = await supabase
       .from("players")
@@ -259,11 +221,12 @@ export const playerService = {
         shirt_number: shirt_number || null,
         photo_url: photo_url || null,
         is_admin: !!is_admin,
+        is_mensalista: is_mensalista !== undefined ? !!is_mensalista : true,
         initial_ovr: finalOvr,
-        pace: pace || 0,
-        shooting: shooting || 0,
-        passing: passing || 0,
-        defending: defending || 0,
+        pace: finalOvr,
+        shooting: finalOvr,
+        passing: finalOvr,
+        defending: finalOvr,
       })
       .eq("id", id)
       .select()
@@ -273,7 +236,7 @@ export const playerService = {
     return {
       ...data,
       playStyle: data.play_style,
-      attributes: { pace, shooting, passing, defending },
+      attributes: { pace: finalOvr, shooting: finalOvr, passing: finalOvr, defending: finalOvr },
       accumulators: {
         pace: data.pace_acc,
         shooting: data.shooting_acc,
@@ -376,62 +339,39 @@ export const playerService = {
         return mDate.getMonth() === targetDate.getMonth() && mDate.getFullYear() === targetDate.getFullYear();
     });
 
+    const updatePromises: Promise<any>[] = [];
+
     for (const p of playersData) {
       const matchesPlayed = currentMonthMatches.filter(m => 
           m.teams.some(t => t.players.some(pl => pl.id === p.id))
       ).length;
       const divisor = matchesPlayed > 0 ? matchesPlayed : 1;
 
-      const totalActivity =
-        Math.abs(Number(p.pace_acc || 0)) +
-        Math.abs(Number(p.shooting_acc || 0)) +
-        Math.abs(Number(p.passing_acc || 0)) +
-        Math.abs(Number(p.defending_acc || 0));
+      const monthlyDelta = Number(p.monthly_delta || 0);
+      const gainOvr = Math.round(monthlyDelta / divisor);
 
-      const gainPace = Math.round(Number(p.pace_acc || 0) / divisor);
-      const gainShoot = Math.round(Number(p.shooting_acc || 0) / divisor);
-      const gainPass = Math.round(Number(p.passing_acc || 0) / divisor);
-      const gainDef = Math.round(Number(p.defending_acc || 0) / divisor);
+      let finalOvr = p.initial_ovr + gainOvr;
+      finalOvr = Math.max(1, Math.min(99, finalOvr));
 
-      let newPace = Math.max(1, Math.min(99, p.pace + gainPace));
-      let newShoot = Math.max(1, Math.min(99, p.shooting + gainShoot));
-      let newPass = Math.max(1, Math.min(99, p.passing + gainPass));
-      let newDef = Math.max(1, Math.min(99, p.defending + gainDef));
-
-      let finalOvr;
-      const currentOvr = p.initial_ovr;
-
-      if (totalActivity === 0) {
-        finalOvr = currentOvr;
-      } else {
-        const rawNewOvr = calculateWeightedOvr(p.position, {
-          pace: newPace,
-          shooting: newShoot,
-          passing: newPass,
-          defending: newDef,
-        });
-        finalOvr = Math.round(rawNewOvr);
-
-        const diff = finalOvr - currentOvr;
-        if (diff > 2) finalOvr = currentOvr + 2;
-        if (diff < -2) finalOvr = currentOvr - 2;
-      }
+      const diff = finalOvr - p.initial_ovr;
+      if (diff > 2) finalOvr = p.initial_ovr + 2;
+      if (diff < -2) finalOvr = p.initial_ovr - 2;
 
       const history = Array.isArray(p.ovr_history) ? [...p.ovr_history] : [];
       // Sempre grava histórico na virada
       history.push({ date: new Date().toISOString(), ovr: finalOvr });
       
-      if (finalOvr !== currentOvr) {
+      if (finalOvr !== p.initial_ovr) {
         count++;
       }
 
-      await supabase
+      const updatePromise = supabase
         .from("players")
         .update({
-          pace: newPace,
-          shooting: newShoot,
-          passing: newPass,
-          defending: newDef,
+          pace: finalOvr,
+          shooting: finalOvr,
+          passing: finalOvr,
+          defending: finalOvr,
           initial_ovr: finalOvr,
           pace_acc: 0,
           shooting_acc: 0,
@@ -441,6 +381,17 @@ export const playerService = {
           ovr_history: history,
         })
         .eq("id", p.id);
+
+      updatePromises.push(updatePromise);
+    }
+
+    if (updatePromises.length > 0) {
+      const results = await Promise.all(updatePromises);
+      const errorResult = results.find(r => r.error);
+      if (errorResult) {
+        console.error("Erro ao atualizar jogadores na virada do mês:", errorResult.error);
+        throw errorResult.error;
+      }
     }
     return `Virada de mês concluída! Hall da Fama (${monthKey}) salvo e ${count} jogadores atualizaram o OVR.`;
   },
@@ -469,76 +420,50 @@ export const playerService = {
       ).length;
       const divisor = matchesPlayed > 0 ? matchesPlayed : 1;
 
-      const totalActivity =
-        Math.abs(Number(p.pace_acc || 0)) +
-        Math.abs(Number(p.shooting_acc || 0)) +
-        Math.abs(Number(p.passing_acc || 0)) +
-        Math.abs(Number(p.defending_acc || 0));
+      const monthlyDelta = Number(p.monthly_delta || 0);
+      const gainOvr = Math.round(monthlyDelta / divisor);
 
-      let newPace = Math.round(p.pace + Number(p.pace_acc || 0) / divisor);
-      let newShoot = Math.round(p.shooting + Number(p.shooting_acc || 0) / divisor);
-      let newPass = Math.round(p.passing + Number(p.passing_acc || 0) / divisor);
-      let newDef = Math.round(p.defending + Number(p.defending_acc || 0) / divisor);
+      let finalOvr = p.initial_ovr + gainOvr;
+      finalOvr = Math.max(1, Math.min(99, finalOvr));
 
-      newPace = Math.max(1, Math.min(99, newPace));
-      newShoot = Math.max(1, Math.min(99, newShoot));
-      newPass = Math.max(1, Math.min(99, newPass));
-      newDef = Math.max(1, Math.min(99, newDef));
-
-      let finalOvr;
-      const currentOvr = p.initial_ovr;
-
-      if (totalActivity === 0) {
-        finalOvr = currentOvr;
-      } else {
-        const rawNewOvr = calculateWeightedOvr(p.position, {
-          pace: newPace,
-          shooting: newShoot,
-          passing: newPass,
-          defending: newDef,
-        });
-        finalOvr = Math.round(rawNewOvr);
-
-        const diff = finalOvr - currentOvr;
-        if (diff > 2) finalOvr = currentOvr + 2;
-        if (diff < -2) finalOvr = currentOvr - 2;
-      }
+      const diff = finalOvr - p.initial_ovr;
+      if (diff > 2) finalOvr = p.initial_ovr + 2;
+      if (diff < -2) finalOvr = p.initial_ovr - 2;
 
       return {
         player: { ...p, id: p.id, name: p.name },
-        oldOvr: currentOvr,
+        oldOvr: p.initial_ovr,
         newOvr: finalOvr,
-        delta: finalOvr - currentOvr,
+        delta: finalOvr - p.initial_ovr,
         changes: {
-          pace: newPace,
-          shooting: newShoot,
-          passing: newPass,
-          defending: newDef,
+          pace: finalOvr,
+          shooting: finalOvr,
+          passing: finalOvr,
+          defending: finalOvr,
         },
       };
     });
 
     return simulation.filter(
-      (s) => s.delta !== 0 || s.changes.pace !== s.player.attributes?.pace
+      (s) => s.delta !== 0
     );
   },
 
   commitMonthlyUpdate: async (
     simulation: PlayerUpdateSimulation[]
   ): Promise<void> => {
-    for (const sim of simulation) {
+    const updatePromises = simulation.map(sim => {
       const history = sim.player.ovr_history || [];
-      
       // --- ALTERAÇÃO: SEMPRE GRAVA HISTÓRICO ---
       history.push({ date: new Date().toISOString(), ovr: sim.newOvr });
 
-      await supabase
+      return supabase
         .from("players")
         .update({
-          pace: sim.changes.pace,
-          shooting: sim.changes.shooting,
-          passing: sim.changes.passing,
-          defending: sim.changes.defending,
+          pace: sim.newOvr,
+          shooting: sim.newOvr,
+          passing: sim.newOvr,
+          defending: sim.newOvr,
           initial_ovr: sim.newOvr,
           pace_acc: 0,
           shooting_acc: 0,
@@ -548,6 +473,15 @@ export const playerService = {
           ovr_history: history,
         })
         .eq("id", sim.player.id);
+    });
+
+    if (updatePromises.length > 0) {
+      const results = await Promise.all(updatePromises);
+      const errorResult = results.find(r => r.error);
+      if (errorResult) {
+        console.error("Erro ao aplicar evolução de OVR no commit:", errorResult.error);
+        throw errorResult.error;
+      }
     }
   },
   updatePhoto: async (playerId: string, photoUrl: string) => {

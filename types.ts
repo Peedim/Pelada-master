@@ -48,6 +48,7 @@ export interface Player {
   initial_ovr: number;
   photo_url?: string;
   is_admin: boolean;
+  is_mensalista?: boolean;
   attributes: PlayerAttributes;
   accumulators: PlayerAccumulators;
   monthly_delta: number;
