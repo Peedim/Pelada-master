@@ -454,33 +454,7 @@ export const matchService = {
             const cur = playersMap.get(player.id);
             if (!cur) continue;
 
-            let dOvr = 0;
-
-            dOvr += (s.wins * 0.3);
-            dOvr += (s.losses * -0.2);
-
-            if (team.id === championId) {
-                dOvr += 1.0;
-            }
-            if (team.id === lastPlaceId) {
-                dOvr -= 1.0;
-            }
-
-            dOvr += (s.goals * 0.4);
-            dOvr += (s.assists * 0.25);
-
-            if (player.position === PlayerPosition.GOLEIRO || player.position === PlayerPosition.DEFENSOR) {
-                dOvr += (s.cleanSheets * 0.4);
-                dOvr += (s.goalsConceded * -0.15);
-            } else {
-                dOvr += (s.cleanSheets * 0.1);
-            }
-
-            if (s.goals === 0 && s.assists === 0 && s.matches > 0) {
-                if (player.position === PlayerPosition.MEIO_CAMPO || player.position === PlayerPosition.ATACANTE) {
-                    dOvr -= 0.2;
-                }
-            }
+            const dOvr = matchService.calculatePlayerMatchDelta(match, player, team.id, playerStats, championId, lastPlaceId);
 
             const updatePromise = supabase.from('players').update({
                 monthly_delta: Number(cur.monthly_delta || 0) + dOvr,
@@ -503,6 +477,148 @@ export const matchService = {
         }
     }
     return match!;
+  },
+
+  calculatePlayerMatchDelta: (match: Match, player: Player, teamId: string, playerStats: any, championId?: string, lastPlaceId?: string): number => {
+    let dOvr = 0;
+    const s = playerStats[player.id];
+    if (!s) return 0;
+
+    // 1. Vitórias e Derrotas em partidas do evento
+    if (player.position === PlayerPosition.GOLEIRO) {
+        dOvr += (s.wins * 0.40);
+    } else {
+        dOvr += (s.wins * 0.30);
+    }
+    dOvr += (s.losses * -0.30);
+
+    // 2. Colocação do Time no Evento
+    if (teamId === championId) {
+        dOvr += 0.50;
+    }
+    if (teamId === lastPlaceId) {
+        dOvr -= 0.50;
+    }
+
+    // 3. Ataque
+    dOvr += (s.goals * 0.20);
+    dOvr += (s.assists * 0.10);
+
+    // 4. Defesa e Posição
+    if (player.position === PlayerPosition.GOLEIRO || player.position === PlayerPosition.DEFENSOR) {
+        const teamGames = match.games.filter(g => g.status === GameStatus.FINISHED && (g.homeTeamId === teamId || g.awayTeamId === teamId));
+        teamGames.forEach(game => {
+            const isHome = game.homeTeamId === teamId;
+            const oppScore = isHome ? game.awayScore : game.homeScore;
+            
+            // Banca de Solidez por partida: 0.25 menos 0.08 por gol sofrido (mínimo 0 por jogo)
+            const gameBank = Math.max(0, 0.25 - (oppScore * 0.08));
+            dOvr += gameBank;
+
+            // Bônus de Clean Sheet
+            if (oppScore === 0) {
+                dOvr += (player.position === PlayerPosition.GOLEIRO ? 0.50 : 0.35);
+            }
+        });
+    } else {
+        // Meia / Atacante
+        dOvr += (s.cleanSheets * 0.10);
+
+        // Apagão Ofensivo
+        if (s.goals === 0 && s.assists === 0 && s.matches > 0) {
+            dOvr -= 0.25;
+        }
+    }
+
+    return dOvr;
+  },
+
+  recalculateMonthlyDeltas: async (): Promise<void> => {
+    const now = new Date();
+    const isBeginningOfMonth = now.getDate() <= 10;
+    const targetDate = isBeginningOfMonth 
+        ? new Date(now.getFullYear(), now.getMonth() - 1, 15)
+        : now;
+
+    const monthKey = targetDate
+      .toLocaleString("pt-BR", { month: "short" })
+      .toUpperCase()
+      .replace(".", "");
+
+    // Trava de Segurança: Se os campeões deste mês já foram gravados no Hall da Fama, a virada do mês já foi encerrada!
+    const { data: existingChampions } = await supabase.from('monthly_champions').select('id').eq('month_key', monthKey);
+    if (existingChampions && existingChampions.length > 0) {
+        console.log(`Virada do mês ${monthKey} já foi realizada. Recálculo ignorado.`);
+        return;
+    }
+
+    const allMatches = await matchService.getAll();
+
+    const currentMonthMatches = allMatches.filter(m => {
+        if (m.status !== MatchStatus.FINISHED) return false;
+        const mDate = new Date(m.date);
+        return mDate.getMonth() === targetDate.getMonth() && mDate.getFullYear() === targetDate.getFullYear();
+    });
+
+    const { data: allPlayers } = await supabase.from('players').select('id');
+    if (!allPlayers) return;
+
+    const newDeltas: Record<string, number> = {};
+    allPlayers.forEach(p => newDeltas[p.id] = 0);
+
+    for (const match of currentMonthMatches) {
+        const finalRankings = matchService.getFinalRankings(match);
+        const championId = finalRankings[0]?.teamId;
+        const lastPlaceId = finalRankings[finalRankings.length - 1]?.teamId;
+        
+        const allGoals = match.goals || [];
+        const playerStats: Record<string, any> = {};
+        match.teams.forEach(t => t.players.forEach(p => playerStats[p.id] = { matches: 0, wins: 0, losses: 0, goals: 0, assists: 0, cleanSheets: 0, goalsConceded: 0 }));
+
+        match.teams.forEach(team => {
+            const teamGames = match.games.filter(g => g.status === GameStatus.FINISHED && (g.homeTeamId === team.id || g.awayTeamId === team.id));
+            teamGames.forEach(game => {
+                const isHome = game.homeTeamId === team.id;
+                const myScore = isHome ? game.homeScore : game.awayScore;
+                const oppScore = isHome ? game.awayScore : game.homeScore;
+                let isWin = myScore > oppScore;
+                let isLoss = oppScore > myScore;
+                if (myScore === oppScore && game.penaltyShootout) {
+                     const p = game.penaltyShootout;
+                     if ((isHome ? p.homeScore : p.awayScore) > (isHome ? p.awayScore : p.homeScore)) isWin = true; else isLoss = true;
+                }
+                team.players.forEach(p => {
+                    const s = playerStats[p.id];
+                    if(s) {
+                        s.matches++;
+                        if (isWin) s.wins++;
+                        if (isLoss) s.losses++;
+                        if (oppScore === 0) s.cleanSheets++;
+                        s.goalsConceded += oppScore;
+                    }
+                });
+            });
+        });
+        allGoals.forEach(g => {
+            if (g.scorerId && playerStats[g.scorerId]) playerStats[g.scorerId].goals++;
+            if (g.assistId && playerStats[g.assistId]) playerStats[g.assistId].assists++;
+        });
+
+        for (const team of match.teams) {
+            for (const player of team.players) {
+                const delta = matchService.calculatePlayerMatchDelta(match, player, team.id, playerStats, championId, lastPlaceId);
+                newDeltas[player.id] = (newDeltas[player.id] || 0) + delta;
+            }
+        }
+    }
+
+    const updatePromises = Object.entries(newDeltas).map(([playerId, delta]) => 
+        supabase.from('players').update({ monthly_delta: delta }).eq('id', playerId)
+    );
+
+    if (updatePromises.length > 0) {
+        await Promise.all(updatePromises);
+    }
   },
 
   calculateStandings: (match: Match): Standing[] => {

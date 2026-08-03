@@ -276,6 +276,9 @@ export const playerService = {
   processMonthlyUpdate: async (): Promise<string> => {
     console.log("Iniciando Virada de Mês...");
 
+    // Recalcula retroativamente os deltas do mês com a nova regra de pontuação
+    await matchService.recalculateMonthlyDeltas();
+
     // 1. Busca Dados Necessários
     const { data: playersData } = await supabase.from("players").select("*");
     if (!playersData) return "Erro ao buscar jogadores";
@@ -342,13 +345,9 @@ export const playerService = {
     const updatePromises: Promise<any>[] = [];
 
     for (const p of playersData) {
-      const matchesPlayed = currentMonthMatches.filter(m => 
-          m.teams.some(t => t.players.some(pl => pl.id === p.id))
-      ).length;
-      const divisor = matchesPlayed > 0 ? matchesPlayed : 1;
-
       const monthlyDelta = Number(p.monthly_delta || 0);
-      const gainOvr = Math.round(monthlyDelta / divisor);
+      const rawGain = monthlyDelta / 4;
+      const gainOvr = rawGain >= 0 ? Math.round(rawGain) : -Math.round(Math.abs(rawGain));
 
       let finalOvr = p.initial_ovr + gainOvr;
       finalOvr = Math.max(1, Math.min(99, finalOvr));
@@ -397,31 +396,79 @@ export const playerService = {
   },
 
   simulateMonthlyUpdate: async (): Promise<PlayerUpdateSimulation[]> => {
-    const { data: players } = await supabase.from("players").select("*");
-    if (!players) return [];
-
-    const allMatches = await matchService.getAll();
-    
-    // --- LÓGICA DE DATA INTELIGENTE TAMBÉM NA SIMULAÇÃO ---
     const now = new Date();
     const isBeginningOfMonth = now.getDate() <= 10;
     const targetDate = isBeginningOfMonth 
         ? new Date(now.getFullYear(), now.getMonth() - 1, 15) 
         : now;
 
+    const monthKey = targetDate
+      .toLocaleString("pt-BR", { month: "short" })
+      .toUpperCase()
+      .replace(".", "");
+
+    // 1. Se os campeões deste mês já foram salvos no Hall da Fama, o mês já está fechado
+    const { data: existingChampions } = await supabase.from('monthly_champions').select('id').eq('month_key', monthKey);
+    if (existingChampions && existingChampions.length > 0) {
+        return [];
+    }
+
+    // 2. Proteção: Verifica se o OVR dos jogadores já foi atualizado hoje no ovr_history
+    const { data: players } = await supabase.from("players").select("*");
+    if (!players) return [];
+
+    const todayStr = new Date().toISOString().split('T')[0];
+    const alreadyUpdatedToday = players.some((p: any) => {
+      if (!Array.isArray(p.ovr_history)) return false;
+      return p.ovr_history.some((h: any) => h.date && h.date.startsWith(todayStr));
+    });
+
+    if (alreadyUpdatedToday) {
+      // O mês já foi rodado hoje! Apenas gera o Hall da Fama e reseta o delta sem alterar o OVR de novo
+      const allMatches = await matchService.getAll();
+      const playersFormatted = players.map((p: any) => ({ ...p, id: p.id, position: p.position }));
+      const monthlyStats = rankingService.getMonthRankings(playersFormatted as Player[], allMatches, targetDate);
+
+      const mvp = findChampion(monthlyStats, playersFormatted as Player[], "wins");
+      const artilheiro = findChampion(monthlyStats, playersFormatted as Player[], "goals");
+      const garcom = findChampion(monthlyStats, playersFormatted as Player[], "assists");
+      const muralha = findChampion(monthlyStats, playersFormatted as Player[], "cleanSheets");
+
+      const championsToSave = [];
+      if (mvp) championsToSave.push({ category: "wins", playerId: mvp.playerId, value: mvp.wins });
+      if (artilheiro) championsToSave.push({ category: "goals", playerId: artilheiro.playerId, value: artilheiro.goals });
+      if (garcom) championsToSave.push({ category: "assists", playerId: garcom.playerId, value: garcom.assists });
+      if (muralha) championsToSave.push({ category: "clean_sheets", playerId: muralha.playerId, value: muralha.cleanSheets });
+
+      if (championsToSave.length > 0) {
+        await rankingService.saveChampions(monthKey, championsToSave);
+      }
+
+      // Zerar deltas residuais para não acumular
+      const updatePromises = players.map((p: any) => 
+        supabase.from("players").update({ monthly_delta: 0 }).eq("id", p.id)
+      );
+      await Promise.all(updatePromises);
+      localStorage.removeItem("c13_hall_of_fame");
+
+      return [];
+    }
+
+    // 3. Caso normal: Recalcula retroativamente os deltas do mês com a nova regra de pontuação
+    const { data: freshPlayers } = await supabase.from("players").select("*");
+    const activePlayers = freshPlayers || players;
+
+    const allMatches = await matchService.getAll();
+    
     const currentMonthMatches = allMatches.filter(m => {
         const mDate = new Date(m.date);
         return mDate.getMonth() === targetDate.getMonth() && mDate.getFullYear() === targetDate.getFullYear();
     });
 
-    const simulation: PlayerUpdateSimulation[] = players.map((p: any) => {
-      const matchesPlayed = currentMonthMatches.filter(m => 
-          m.teams.some(t => t.players.some(pl => pl.id === p.id))
-      ).length;
-      const divisor = matchesPlayed > 0 ? matchesPlayed : 1;
-
+    const simulation: PlayerUpdateSimulation[] = activePlayers.map((p: any) => {
       const monthlyDelta = Number(p.monthly_delta || 0);
-      const gainOvr = Math.round(monthlyDelta / divisor);
+      const rawGain = monthlyDelta / 4;
+      const gainOvr = rawGain >= 0 ? Math.round(rawGain) : -Math.round(Math.abs(rawGain));
 
       let finalOvr = p.initial_ovr + gainOvr;
       finalOvr = Math.max(1, Math.min(99, finalOvr));
@@ -452,9 +499,52 @@ export const playerService = {
   commitMonthlyUpdate: async (
     simulation: PlayerUpdateSimulation[]
   ): Promise<void> => {
+    // 1. Salva os campeões do mês no Hall da Fama
+    try {
+      const { data: playersData } = await supabase.from("players").select("*");
+      const allMatches = await matchService.getAll();
+
+      const now = new Date();
+      const isBeginningOfMonth = now.getDate() <= 10;
+      const targetDate = isBeginningOfMonth 
+          ? new Date(now.getFullYear(), now.getMonth() - 1, 15) 
+          : now;
+
+      if (playersData && allMatches) {
+        const players = playersData.map((p: any) => ({
+          ...p,
+          id: p.id,
+          position: p.position,
+        }));
+        
+        const monthlyStats = rankingService.getMonthRankings(players as Player[], allMatches, targetDate);
+        const mvp = findChampion(monthlyStats, players as Player[], "wins");
+        const artilheiro = findChampion(monthlyStats, players as Player[], "goals");
+        const garcom = findChampion(monthlyStats, players as Player[], "assists");
+        const muralha = findChampion(monthlyStats, players as Player[], "cleanSheets");
+
+        const monthKey = targetDate
+          .toLocaleString("pt-BR", { month: "short" })
+          .toUpperCase()
+          .replace(".", "");
+
+        const championsToSave = [];
+        if (mvp) championsToSave.push({ category: "wins", playerId: mvp.playerId, value: mvp.wins });
+        if (artilheiro) championsToSave.push({ category: "goals", playerId: artilheiro.playerId, value: artilheiro.goals });
+        if (garcom) championsToSave.push({ category: "assists", playerId: garcom.playerId, value: garcom.assists });
+        if (muralha) championsToSave.push({ category: "clean_sheets", playerId: muralha.playerId, value: muralha.cleanSheets });
+
+        if (championsToSave.length > 0) {
+          await rankingService.saveChampions(monthKey, championsToSave);
+        }
+      }
+    } catch (e) {
+      console.error("Erro ao salvar Hall da Fama na virada:", e);
+    }
+
+    // 2. Aplica as mudanças de OVR nos jogadores
     const updatePromises = simulation.map(sim => {
       const history = sim.player.ovr_history || [];
-      // --- ALTERAÇÃO: SEMPRE GRAVA HISTÓRICO ---
       history.push({ date: new Date().toISOString(), ovr: sim.newOvr });
 
       return supabase
@@ -483,6 +573,9 @@ export const playerService = {
         throw errorResult.error;
       }
     }
+
+    // Limpa cache local do Hall da Fama
+    localStorage.removeItem('c13_hall_of_fame');
   },
   updatePhoto: async (playerId: string, photoUrl: string) => {
     const { error } = await supabase

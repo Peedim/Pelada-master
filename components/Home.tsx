@@ -143,70 +143,120 @@ const Home: React.FC<HomeProps> = ({ player, matches, onNavigateToMatch }) => {
         const endTimestamp = new Date(startYear, 11, 31).getTime();
         const totalTime = endTimestamp - startTimestamp;
 
-        let dataPoints = [{ date: new Date(startYear, 0, 1), ovr: player.initial_ovr }];
+        // Processa o histórico de OVR ordenado cronologicamente
+        const history = (player.ovr_history && Array.isArray(player.ovr_history))
+            ? [...player.ovr_history].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+            : [];
 
-        if (player.ovr_history) {
-            player.ovr_history.forEach(h => {
-                dataPoints.push({ date: new Date(h.date), ovr: h.ovr });
+        let rawPoints: { date: Date; ovr: number }[] = [];
+
+        if (history.length > 0) {
+            // Nota inicial do ano (Jan 1)
+            const firstHistOvr = history[0].ovr;
+            const startingOvr = history.length === 1 
+                ? (player.initial_ovr !== firstHistOvr ? (firstHistOvr - (player.initial_ovr - firstHistOvr)) : firstHistOvr)
+                : history[0].ovr;
+
+            rawPoints.push({ date: new Date(startYear, 0, 1), ovr: Math.max(1, Math.min(99, startingOvr)) });
+
+            history.forEach(h => {
+                const hDate = new Date(h.date);
+                if (!isNaN(hDate.getTime())) {
+                    rawPoints.push({ date: hDate, ovr: h.ovr });
+                }
             });
+
+            // Ponto de hoje se for posterior ao último histórico
+            const now = new Date();
+            const lastHDate = new Date(history[history.length - 1].date);
+            if (now.getTime() - lastHDate.getTime() > 24 * 60 * 60 * 1000 && now.getFullYear() === startYear) {
+                rawPoints.push({ date: now, ovr: player.initial_ovr });
+            }
+        } else {
+            rawPoints.push({ date: new Date(startYear, 0, 1), ovr: player.initial_ovr });
+            rawPoints.push({ date: new Date(), ovr: player.initial_ovr });
         }
 
-        dataPoints.sort((a, b) => a.date.getTime() - b.date.getTime());
+        rawPoints.sort((a, b) => a.date.getTime() - b.date.getTime());
 
+        // Deduplica pontos no mesmo dia para evitar que a curva passe do ponto final
+        const dataPoints: { date: Date; ovr: number }[] = [];
+        const seenDates = new Set<string>();
+
+        rawPoints.forEach(p => {
+            const dateKey = `${p.date.getFullYear()}-${p.date.getMonth()}-${p.date.getDate()}`;
+            if (!seenDates.has(dateKey)) {
+                seenDates.add(dateKey);
+                dataPoints.push(p);
+            } else {
+                dataPoints[dataPoints.length - 1] = p;
+            }
+        });
+
+        // Limites verticais com respiro amplo
         const ovrs = dataPoints.map(p => p.ovr);
-        const minOvr = Math.min(...ovrs) - 2;
-        const maxOvr = Math.max(...ovrs) + 2;
-        const rangeOvr = maxOvr - minOvr || 1;
+        const minOvr = Math.min(...ovrs) - 1;
+        const maxOvr = Math.max(...ovrs) + 1;
+        const rangeOvr = (maxOvr - minOvr) || 1;
 
         const width = 350;
-        const height = 100;
-        const padding = 10;
-        const graphWidth = width - 2 * padding;
-        const graphHeight = height - 2 * padding;
+        const height = 120;
+        const paddingX = 18;
+        const paddingTop = 15;
+        const paddingBottom = 28;
+        const graphWidth = width - 2 * paddingX;
+        const graphHeight = height - paddingTop - paddingBottom;
 
         const points = dataPoints.map((p) => {
             let time = p.date.getTime();
             if (time < startTimestamp) time = startTimestamp;
+            if (time > endTimestamp) time = endTimestamp;
 
             const percentX = (time - startTimestamp) / totalTime;
             const clampedPercentX = Math.min(1, Math.max(0, percentX));
 
-            const x = padding + (clampedPercentX * graphWidth);
-            const y = height - padding - ((p.ovr - minOvr) / rangeOvr) * graphHeight;
+            const x = paddingX + (clampedPercentX * graphWidth);
+            const y = height - paddingBottom - ((p.ovr - minOvr) / rangeOvr) * graphHeight;
 
             const dateStr = p.date.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short' });
 
             return { x, y, ovr: p.ovr, date: dateStr };
         });
 
-        const pathD = getSmoothPath(points, 0.2);
-        const areaPathD = getSmoothAreaPath(points, width, height, 0.2);
+        const pathD = getSmoothPath(points, 0.15);
+        const areaPathD = getSmoothAreaPath(points, width, height - paddingBottom + 5, 0.15);
 
         const lastPoint = points[points.length - 1];
         
-        const displayLabels = ["JAN", "MAR", "MAI", "JUL", "SET", "NOV"];
+        // Rótulos cobrindo de JAN a DEZ de ponta a ponta sem sobrous de espaço em branco
+        const monthNames = ["JAN", "MAR", "MAI", "JUL", "SET", "DEZ"];
+        const displayLabels = monthNames.map((label, idx) => {
+            const x = paddingX + (idx / (monthNames.length - 1)) * graphWidth;
+            return { label, x };
+        });
 
-        return { pathD, areaPathD, lastX: lastPoint.x, lastY: lastPoint.y, displayLabels, points };
+        return { pathD, areaPathD, lastX: lastPoint.x, lastY: lastPoint.y, displayLabels, points, width, height, axisY: height - paddingBottom + 5 };
     }, [player]);
 
     const handleGraphHover = (e: React.MouseEvent<SVGSVGElement, MouseEvent>) => {
         const svgRect = e.currentTarget.getBoundingClientRect();
-        const hoverX = e.clientX - svgRect.left;
+        if (svgRect.width === 0) return;
 
-        // Find closest point
+        const mouseX = e.clientX - svgRect.left;
+        const svgX = (mouseX / svgRect.width) * chartData.width;
+
         let closest = chartData.points[0];
         let minDist = Infinity;
 
         chartData.points.forEach(p => {
-            const dist = Math.abs(p.x - hoverX);
+            const dist = Math.abs(p.x - svgX);
             if (dist < minDist) {
                 minDist = dist;
                 closest = p;
             }
         });
 
-        // Só mostra se estiver perto o suficiente (ex: 50px)
-        if (minDist < 50) {
+        if (minDist < 60) {
             setHoveredPoint(closest);
         } else {
              setHoveredPoint(null);
@@ -456,11 +506,11 @@ const Home: React.FC<HomeProps> = ({ player, matches, onNavigateToMatch }) => {
                             <TrendingUp className="text-emerald-400 w-4 h-4" /> Evolução OVR (2026)
                         </CardTitle>
                     </CardHeader>
-                    <CardContent className="h-44 relative p-0">
+                    <CardContent className="h-48 relative p-0">
                          <div className="w-full h-full p-4 pt-0 flex flex-col justify-end">
                             {/* SVG Grafico */}
                             <div className="flex-1 relative z-10 w-full" onMouseMove={handleGraphHover} onMouseLeave={handleGraphLeave}>
-                                <svg className="absolute inset-0 w-full h-full overflow-visible" preserveAspectRatio="none">
+                                <svg className="absolute inset-0 w-full h-full overflow-visible" viewBox="0 0 350 120" preserveAspectRatio="none">
                                     <defs>
                                         <linearGradient id="areaGradient" x1="0" y1="0" x2="0" y2="1">
                                             <stop offset="0%" stopColor="#34d399" stopOpacity="0.3" />
@@ -483,7 +533,7 @@ const Home: React.FC<HomeProps> = ({ player, matches, onNavigateToMatch }) => {
                                         d={chartData.pathD} 
                                         fill="none" 
                                         stroke="url(#lineGradient)" 
-                                        strokeWidth="4" 
+                                        strokeWidth="3.5" 
                                         strokeLinecap="round" 
                                         strokeLinejoin="round" 
                                         className="drop-shadow-lg" 
@@ -493,7 +543,7 @@ const Home: React.FC<HomeProps> = ({ player, matches, onNavigateToMatch }) => {
                                     {!hoveredPoint && <circle 
                                         cx={chartData.lastX} 
                                         cy={chartData.lastY} 
-                                        r="5" 
+                                        r="4.5" 
                                         fill="#34d399" 
                                         stroke="white" 
                                         strokeWidth="2" 
@@ -507,40 +557,42 @@ const Home: React.FC<HomeProps> = ({ player, matches, onNavigateToMatch }) => {
                                                 x1={hoveredPoint.x} 
                                                 y1={hoveredPoint.y} 
                                                 x2={hoveredPoint.x} 
-                                                y2="100%" 
+                                                y2={chartData.axisY} 
                                                 stroke="#cbd5e1" 
                                                 strokeWidth="1" 
-                                                strokeDasharray="4 2" 
-                                                opacity="0.5" 
+                                                strokeDasharray="3 2" 
+                                                opacity="0.6" 
                                             />
                                             
                                             {/* Point */}
                                             <circle 
                                                 cx={hoveredPoint.x} 
                                                 cy={hoveredPoint.y} 
-                                                r="6" 
+                                                r="5.5" 
                                                 fill="#34d399" 
                                                 stroke="white" 
-                                                strokeWidth="3" 
+                                                strokeWidth="2.5" 
                                                 className="drop-shadow-md"
                                             />
 
                                             {/* Tooltip Label */}
-                                            <g transform={`translate(${hoveredPoint.x}, ${hoveredPoint.y - 15})`}>
+                                            <g transform={`translate(${Math.max(35, Math.min(315, hoveredPoint.x))}, ${Math.max(30, hoveredPoint.y - 12)})`}>
                                                 <rect 
-                                                    x="-35" 
-                                                    y="-35" 
-                                                    width="70" 
-                                                    height="30" 
+                                                    x="-32" 
+                                                    y="-30" 
+                                                    width="64" 
+                                                    height="28" 
                                                     rx="6" 
-                                                    fill="#1e293b" 
-                                                    className="drop-shadow-lg"
+                                                    fill="#0f172a" 
+                                                    stroke="#334155"
+                                                    strokeWidth="1"
+                                                    className="drop-shadow-xl"
                                                 />
                                                 <text 
                                                     x="0" 
-                                                    y="-20" 
-                                                    fill="white" 
-                                                    fontSize="12" 
+                                                    y="-17" 
+                                                    fill="#34d399" 
+                                                    fontSize="11" 
                                                     fontWeight="bold" 
                                                     textAnchor="middle" 
                                                     dominantBaseline="middle"
@@ -549,7 +601,7 @@ const Home: React.FC<HomeProps> = ({ player, matches, onNavigateToMatch }) => {
                                                 </text>
                                                 <text 
                                                     x="0" 
-                                                    y="-8" 
+                                                    y="-6" 
                                                     fill="#94a3b8" 
                                                     fontSize="8" 
                                                     textAnchor="middle" 
@@ -560,14 +612,23 @@ const Home: React.FC<HomeProps> = ({ player, matches, onNavigateToMatch }) => {
                                             </g>
                                         </g>
                                     )}
+
+                                    {/* Eixo X com rótulos de meses alinhados nas coordenadas X exatas do SVG */}
+                                    <line x1="10" y1={chartData.axisY} x2="340" y2={chartData.axisY} stroke="#334155" strokeWidth="1" opacity="0.4" />
+                                    {chartData.displayLabels.map((item, i) => (
+                                        <text
+                                            key={i}
+                                            x={item.x}
+                                            y="114"
+                                            fill={i === 3 ? '#34d399' : '#64748b'}
+                                            fontSize="9"
+                                            fontWeight="bold"
+                                            textAnchor="middle"
+                                        >
+                                            {item.label}
+                                        </text>
+                                    ))}
                                 </svg>
-                            </div>
-                            
-                            {/* X Axis Labels */}
-                            <div className="flex justify-between text-[10px] text-slate-500 font-bold uppercase pt-2 border-t border-slate-700/50 mt-2">
-                                {chartData.displayLabels.map((label, i) => (
-                                    <span key={i} className={i === chartData.displayLabels.length - 1 ? 'text-emerald-400' : ''}>{label}</span>
-                                ))}
                             </div>
                         </div>
                     </CardContent>
