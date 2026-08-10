@@ -2,7 +2,8 @@ import React, { useEffect, useState, useMemo } from 'react';
 import { GameStatus, Match, GamePhase, Standing, MatchStatus, Game, PlayerPosition, Goal } from '../types';
 import { matchService } from '../services/matchService';
 import LiveMatchControl from './LiveMatchControl';
-import { ArrowLeft, Trophy, List, PlayCircle, CheckCircle2, Archive, AlertTriangle, Trash2, ChevronDown, ChevronUp, Zap, Shield, Footprints, Scale } from 'lucide-react';
+import GameEditModal from './GameEditModal';
+import { ArrowLeft, Trophy, List, PlayCircle, CheckCircle2, Archive, AlertTriangle, Trash2, ChevronDown, ChevronUp, Zap, Shield, Footprints, Scale, RotateCcw, Edit2 } from 'lucide-react';
 
 interface ActiveMatchDashboardProps {
   matchId: string;
@@ -19,6 +20,7 @@ const ActiveMatchDashboard: React.FC<ActiveMatchDashboardProps> = ({ matchId, on
   // States para Modais
   const [isFinishEventConfirmOpen, setIsFinishEventConfirmOpen] = useState(false);
   const [isCancelEventConfirmOpen, setIsCancelEventConfirmOpen] = useState(false);
+  const [editingGame, setEditingGame] = useState<Game | null>(null);
   
   // State para o Acordeão da Tabela
   const [expandedTeamId, setExpandedTeamId] = useState<string | null>(null);
@@ -233,7 +235,35 @@ const ActiveMatchDashboard: React.FC<ActiveMatchDashboardProps> = ({ matchId, on
   return (
     <div className="w-full max-w-5xl mx-auto animate-fade-in pb-20 px-2 sm:px-4">
       <div className="flex items-center justify-between mb-6">
-        <div className="flex items-center gap-3"><button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-full text-slate-400 transition-colors"><ArrowLeft size={24} /></button><div><h2 className="text-2xl font-bold text-white flex items-center gap-2">{isEventFinished ? (<div className="px-2 py-0.5 rounded bg-slate-700 text-slate-300 text-xs uppercase">Finalizado</div>) : (<div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>)} Evento Ativo</h2><p className="text-slate-400 text-sm">{match.type} • {match.location}</p></div></div>
+        <div className="flex items-center gap-3">
+          <button onClick={onBack} className="p-2 hover:bg-slate-800 rounded-full text-slate-400 transition-colors"><ArrowLeft size={24} /></button>
+          <div>
+            <h2 className="text-2xl font-bold text-white flex items-center gap-2">
+              {isEventFinished ? (
+                <div className="flex items-center gap-2">
+                  <span className="px-2 py-0.5 rounded bg-slate-700 text-slate-300 text-xs uppercase font-bold">Finalizado</span>
+                  <button 
+                    onClick={async () => {
+                      if (confirm("Deseja reabrir este evento para editar partidas ou placares?")) {
+                        const updated = await matchService.reopenMatch(match.id);
+                        setMatch({ ...updated });
+                      }
+                    }}
+                    className="px-2.5 py-1 rounded bg-blue-600/30 hover:bg-blue-600 text-blue-300 hover:text-white border border-blue-500/40 text-xs font-bold transition-all flex items-center gap-1.5 shadow"
+                    title="Reabrir Evento para Edição"
+                  >
+                    <RotateCcw size={13} />
+                    Reabrir Evento
+                  </button>
+                </div>
+              ) : (
+                <div className="w-3 h-3 bg-red-500 rounded-full animate-pulse"></div>
+              )}
+              Evento Ativo
+            </h2>
+            <p className="text-slate-400 text-sm">{match.type} • {match.location}</p>
+          </div>
+        </div>
       </div>
 
       {liveGame && !isEventFinished && (<LiveMatchControl match={match} game={liveGame} onUpdate={handleUpdateMatch} onScoreGoal={handleScoreGoal} />)}
@@ -323,8 +353,68 @@ const ActiveMatchDashboard: React.FC<ActiveMatchDashboardProps> = ({ matchId, on
                                                     <button onClick={() => handleStartGame(game.id)} disabled={!!liveGame} className="bg-slate-700 hover:bg-green-600 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:bg-slate-700 text-white px-6 py-2 sm:px-3 sm:py-1.5 rounded text-xs font-bold transition-colors flex items-center gap-2 w-full sm:w-24 justify-center shadow-md sm:shadow-none"><PlayCircle size={14} /> INICIAR</button>
                                                 ) : (<span className="text-xs text-slate-500 italic py-1">{game.homeTeamId === 'TBD' ? 'Aguardando' : 'Próximo'}</span>)
                                             )}
-                                            {game.status === GameStatus.FINISHED && (<CheckCircle2 size={20} className="text-slate-600" />)}
-                                            {game.status === GameStatus.LIVE && (<span className="text-xs text-red-500 font-bold animate-pulse py-1">AO VIVO</span>)}
+                                            {game.status === GameStatus.FINISHED && (
+                                                <div className="flex items-center gap-2">
+                                                    <button 
+                                                        onClick={() => setEditingGame(game)}
+                                                        className="text-[11px] bg-slate-700 hover:bg-green-600 text-slate-300 hover:text-white px-2.5 py-1 rounded font-bold transition-all flex items-center gap-1 shadow"
+                                                        title="Editar Placar e Gols da Partida"
+                                                    >
+                                                        <Edit2 size={12} />
+                                                        Editar Gols
+                                                    </button>
+                                                    <button 
+                                                        onClick={async () => {
+                                                            if (!match) return;
+                                                            const updated = await matchService.reopenGame(match.id, game.id);
+                                                            setMatch({ ...updated });
+                                                        }}
+                                                        className="text-[11px] bg-slate-700/60 hover:bg-blue-600 text-slate-400 hover:text-white px-2.5 py-1 rounded font-bold transition-all flex items-center gap-1 shadow"
+                                                        title="Retomar Partida para o Cronômetro"
+                                                    >
+                                                        <RotateCcw size={12} />
+                                                        Retomar
+                                                    </button>
+                                                    {!isEventFinished && (
+                                                        <button 
+                                                            onClick={async () => {
+                                                                if (confirm("Deseja zerar o placar e mandar esta partida de volta para 'Aguardando'?")) {
+                                                                    if (!match) return;
+                                                                    const updated = await matchService.resetGame(match.id, game.id);
+                                                                    setMatch({ ...updated });
+                                                                }
+                                                            }}
+                                                            className="text-[11px] bg-slate-700/40 hover:bg-red-600 text-slate-400 hover:text-white px-2 py-1 rounded font-bold transition-all flex items-center gap-1 shadow"
+                                                            title="Zerar Placar e Voltar para Aguardando"
+                                                        >
+                                                            <Trash2 size={12} />
+                                                            Zerar
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            )}
+                                            {game.status === GameStatus.LIVE && (
+                                                <div className="flex items-center gap-2">
+                                                    <span className="text-xs text-red-500 font-bold animate-pulse py-1">AO VIVO</span>
+                                                    {!isEventFinished && (
+                                                        <button 
+                                                            onClick={async () => {
+                                                                if (confirm("Deseja cancelar o início desta partida? O status voltará para 'Aguardando'.")) {
+                                                                    if (!match) return;
+                                                                    localStorage.removeItem(`match_timer_${match.id}_${game.id}`);
+                                                                    const updated = await matchService.resetGame(match.id, game.id);
+                                                                    setMatch({ ...updated });
+                                                                }
+                                                            }}
+                                                            className="text-[11px] bg-red-900/30 hover:bg-red-600 text-red-300 hover:text-white border border-red-500/30 px-2 py-1 rounded font-bold transition-all flex items-center gap-1 shadow"
+                                                            title="Cancelar Início da Partida (Voltar para Aguardando)"
+                                                        >
+                                                            <RotateCcw size={12} />
+                                                            Cancelar Início
+                                                        </button>
+                                                    )}
+                                                </div>
+                                            )}
                                         </div>
                                     </div>
                                 )})}
@@ -367,6 +457,18 @@ const ActiveMatchDashboard: React.FC<ActiveMatchDashboardProps> = ({ matchId, on
 
       {isFinishEventConfirmOpen && (<div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in"><div className="bg-slate-800 border border-slate-600 rounded-xl shadow-2xl w-full max-w-sm p-6 transform transition-all scale-100"><div className="flex flex-col items-center text-center space-y-4"><div className="w-16 h-16 bg-green-900/30 rounded-full flex items-center justify-center border border-green-700/50"><Trophy size={32} className="text-green-500" /></div><div><h3 className="text-xl font-bold text-white">Encerrar Evento?</h3><p className="text-slate-400 text-sm mt-2">Isso marcará o evento como finalizado e aplicará os pontos de OVR.</p></div><div className="flex gap-3 w-full mt-4"><button onClick={() => setIsFinishEventConfirmOpen(false)} className="flex-1 py-2.5 bg-slate-700 hover:bg-slate-600 text-white rounded-lg font-medium transition-colors">Cancelar</button><button onClick={confirmFinishEvent} className="flex-1 py-2.5 bg-green-600 hover:bg-green-500 text-white rounded-lg font-bold shadow-lg shadow-green-900/20 transition-transform active:scale-95">Confirmar</button></div></div></div></div>)}
       {isCancelEventConfirmOpen && (<div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in"><div className="bg-slate-800 border border-slate-600 rounded-xl shadow-2xl w-full max-w-sm p-6 transform transition-all scale-100"><div className="flex flex-col items-center text-center space-y-4"><div className="w-16 h-16 bg-red-900/30 rounded-full flex items-center justify-center border border-red-700/50"><AlertTriangle size={32} className="text-red-500" /></div><div><h3 className="text-xl font-bold text-white">Cancelar Evento?</h3><p className="text-slate-400 text-sm mt-2">O evento voltará para a fase de <strong>Rascunho</strong>. <br/><span className="text-red-400">Todos os jogos e gols registrados serão apagados.</span></p></div><div className="flex gap-3 w-full mt-4"><button onClick={() => setIsCancelEventConfirmOpen(false)} className="flex-1 py-2.5 bg-slate-700 hover:bg-slate-600 text-white rounded-lg font-medium transition-colors">Não</button><button onClick={confirmCancelEvent} className="flex-1 py-2.5 bg-red-600 hover:bg-red-500 text-white rounded-lg font-bold shadow-lg shadow-red-900/20 transition-transform active:scale-95">Sim, Cancelar</button></div></div></div></div>)}
+      {editingGame && match && (
+        <GameEditModal
+          match={match}
+          game={editingGame}
+          isOpen={!!editingGame}
+          onClose={() => setEditingGame(null)}
+          onUpdate={(updated) => {
+            setMatch({ ...updated });
+            if (onMatchUpdate) onMatchUpdate();
+          }}
+        />
+      )}
     </div>
   );
 };

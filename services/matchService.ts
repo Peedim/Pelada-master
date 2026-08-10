@@ -277,19 +277,100 @@ export const matchService = {
     return (await matchService.getById(matchId))!;
   },
 
-  scoreGoal: async (matchId: string, gameId: string, teamId: string, scorerId: string, assistId?: string): Promise<Match> => {
-    await supabase.from('goals').insert([{ match_id: matchId, game_id: gameId, team_id: teamId, scorer_id: scorerId, assist_id: assistId, minute: new Date().getMinutes() }]);
+  scoreGoal: async (matchId: string, gameId: string, teamId: string, scorerId: string, assistId?: string | null): Promise<Match> => {
+    const cleanAssistId = (assistId && assistId !== 'none') ? assistId : null;
+    
+    const { error: goalError } = await supabase.from('goals').insert([{ 
+      match_id: matchId, 
+      game_id: gameId, 
+      team_id: teamId, 
+      scorer_id: scorerId, 
+      assist_id: cleanAssistId, 
+      minute: new Date().getMinutes() 
+    }]);
+
+    if (goalError) {
+      console.error('Erro ao registrar gol no Supabase:', goalError);
+      throw new Error(`Erro ao salvar gol: ${goalError.message}`);
+    }
+
+    const { data: game, error: gameError } = await supabase.from('games').select('*').eq('id', gameId).single();
+    if (gameError || !game) {
+      throw new Error('Partida não encontrada para atualizar placar.');
+    }
+
+    if (game.home_team_id === teamId) {
+      const { error: scoreErr } = await supabase.from('games').update({ home_score: game.home_score + 1 }).eq('id', gameId);
+      if (scoreErr) console.error('Erro ao atualizar placar da casa:', scoreErr);
+    } else {
+      const { error: scoreErr } = await supabase.from('games').update({ away_score: game.away_score + 1 }).eq('id', gameId);
+      if (scoreErr) console.error('Erro ao atualizar placar visitante:', scoreErr);
+    }
+
+    return (await matchService.getById(matchId))!;
+  },
+
+  updateGoal: async (matchId: string, goalId: string, scorerId: string, assistId?: string | null): Promise<Match> => {
+      const cleanAssistId = (assistId && assistId !== 'none') ? assistId : null;
+      const { error } = await supabase.from('goals').update({ scorer_id: scorerId, assist_id: cleanAssistId }).eq('id', goalId);
+      if (error) {
+        console.error('Erro ao atualizar gol no Supabase:', error);
+        throw new Error(`Erro ao atualizar gol: ${error.message}`);
+      }
+      return (await matchService.getById(matchId))!;
+  },
+
+  deleteGoal: async (matchId: string, gameId: string, goalId: string): Promise<Match> => {
+    const { data: goal, error: getGoalError } = await supabase.from('goals').select('*').eq('id', goalId).single();
+    if (getGoalError || !goal) {
+      throw new Error('Gol não encontrado para exclusão.');
+    }
+
+    const { error: deleteError } = await supabase.from('goals').delete().eq('id', goalId);
+    if (deleteError) {
+      console.error('Erro ao deletar gol:', deleteError);
+      throw new Error(`Erro ao deletar gol: ${deleteError.message}`);
+    }
+
     const { data: game } = await supabase.from('games').select('*').eq('id', gameId).single();
     if (game) {
-        if (game.home_team_id === teamId) await supabase.from('games').update({ home_score: game.home_score + 1 }).eq('id', gameId);
-        else await supabase.from('games').update({ away_score: game.away_score + 1 }).eq('id', gameId);
+      if (game.home_team_id === goal.team_id) {
+        await supabase.from('games').update({ home_score: Math.max(0, game.home_score - 1) }).eq('id', gameId);
+      } else if (game.away_team_id === goal.team_id) {
+        await supabase.from('games').update({ away_score: Math.max(0, game.away_score - 1) }).eq('id', gameId);
+      }
     }
     return (await matchService.getById(matchId))!;
   },
 
-  updateGoal: async (matchId: string, goalId: string, scorerId: string, assistId?: string): Promise<Match> => {
-      await supabase.from('goals').update({ scorer_id: scorerId, assist_id: assistId }).eq('id', goalId);
-      return (await matchService.getById(matchId))!;
+  reopenGame: async (matchId: string, gameId: string): Promise<Match> => {
+    await supabase.from('games').update({ status: GameStatus.LIVE }).eq('id', gameId);
+    await supabase.from('matches').update({ status: MatchStatus.IN_PROGRESS }).eq('id', matchId);
+    return (await matchService.getById(matchId))!;
+  },
+
+  resetGame: async (matchId: string, gameId: string): Promise<Match> => {
+    const { error: goalErr } = await supabase.from('goals').delete().eq('game_id', gameId);
+    if (goalErr) console.error('Erro ao deletar gols no reset:', goalErr);
+
+    const { error: gameErr } = await supabase.from('games').update({ 
+      home_score: 0, 
+      away_score: 0, 
+      status: GameStatus.WAITING,
+      penalty_shootout: null 
+    }).eq('id', gameId);
+
+    if (gameErr) {
+      console.error('Erro ao resetar status do jogo:', gameErr);
+      throw new Error(`Erro ao resetar partida: ${gameErr.message}`);
+    }
+
+    return (await matchService.getById(matchId))!;
+  },
+
+  reopenMatch: async (matchId: string): Promise<Match> => {
+    await supabase.from('matches').update({ status: MatchStatus.IN_PROGRESS }).eq('id', matchId);
+    return (await matchService.getById(matchId))!;
   },
 
   initializePenaltyShootout: async (matchId: string, gameId: string): Promise<Match> => {

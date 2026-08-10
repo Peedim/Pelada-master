@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Game, Match, Goal, GamePhase } from '../types';
 import { matchService } from '../services/matchService';
-import { X, CheckCircle, AlertTriangle, Edit2, Zap, Target, RotateCcw, Loader2, Play, Pause, Square, Clock, Plus } from 'lucide-react';
+import { X, CheckCircle, AlertTriangle, Edit2, Zap, Target, RotateCcw, Loader2, Play, Pause, Square, Clock, Plus, Trash2 } from 'lucide-react';
 
 interface LiveMatchControlProps {
   match: Match;
@@ -239,7 +239,7 @@ const LiveMatchControl: React.FC<LiveMatchControlProps> = ({ match, game, onUpda
   const openGoalModal = (teamId: string) => { 
     setScoringTeamId(teamId); 
     setSelectedScorer(null); 
-    setSelectedAssist(null); 
+    setSelectedAssist('none'); 
     setEditingGoalId(null); 
   };
 
@@ -493,7 +493,24 @@ const LiveMatchControl: React.FC<LiveMatchControlProps> = ({ match, game, onUpda
         <div className="pt-5 border-t border-slate-700/50 flex justify-center">
             <div className="flex items-center gap-6">
                 <span className="flex items-center gap-2 text-red-500 font-bold animate-pulse text-xs uppercase tracking-widest"><div className="w-2 h-2 bg-red-500 rounded-full shadow-[0_0_10px_red]"></div> Em Andamento</span>
-                {(!requiresPenalties || isPenaltyWinnerDecided) && (<button onClick={handleEndGameClick} className="text-xs text-slate-500 hover:text-white underline transition-colors decoration-slate-600 hover:decoration-white underline-offset-4">Encerrar Partida</button>)}
+                <button 
+                    onClick={async () => {
+                        if (confirm("Deseja cancelar o início desta partida? O status voltará para 'Aguardando' e o placar/gols registrados serão zerados.")) {
+                            if (isProcessing) return;
+                            setIsProcessing(true);
+                            localStorage.removeItem(STORAGE_KEY);
+                            const updated = await matchService.resetGame(match.id, game.id);
+                            onUpdate(updated);
+                            setIsProcessing(false);
+                        }
+                    }} 
+                    className="text-xs bg-red-900/30 hover:bg-red-600 text-red-300 hover:text-white px-3 py-1.5 rounded-lg border border-red-500/30 transition-all font-semibold shadow flex items-center gap-1.5"
+                    title="Cancelar Início da Partida (Voltar para Aguardando)"
+                >
+                    <RotateCcw size={13} />
+                    Cancelar Início (Voltar p/ Fila)
+                </button>
+                {(!requiresPenalties || isPenaltyWinnerDecided) && (<button onClick={handleEndGameClick} className="text-xs text-slate-400 hover:text-white bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg transition-all font-bold shadow">Encerrar Partida</button>)}
             </div>
         </div>
 
@@ -505,7 +522,28 @@ const LiveMatchControl: React.FC<LiveMatchControlProps> = ({ match, game, onUpda
                     <div className="space-y-5">
                         <div><label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Quem fez o gol?</label><div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto custom-scrollbar p-1">{scoringTeam?.players.map(p => (<button key={p.id} onClick={() => setSelectedScorer(p.id)} className={`p-3 text-sm rounded-lg text-left truncate transition-all border ${selectedScorer === p.id ? 'bg-green-600 text-white border-green-500 shadow-lg shadow-green-900/20 scale-[1.02]' : 'bg-slate-700/50 text-slate-300 border-transparent hover:bg-slate-700 hover:border-slate-600'}`}>{p.name}</button>))}</div></div>
                         {selectedScorer && (<div className="animate-fade-in"><label className="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-3">Quem deu a assistência?</label><div className="grid grid-cols-2 gap-2 max-h-48 overflow-y-auto custom-scrollbar p-1"><button onClick={() => setSelectedAssist('none')} className={`p-3 text-sm rounded-lg text-left transition-all border ${selectedAssist === 'none' ? 'bg-slate-600 text-white border-slate-500' : 'bg-slate-700/50 text-slate-300 border-transparent hover:bg-slate-700 hover:border-slate-600'}`}>Sem assistência</button>{scoringTeam?.players.filter(p => p.id !== selectedScorer).map(p => (<button key={p.id} onClick={() => setSelectedAssist(p.id)} className={`p-3 text-sm rounded-lg text-left truncate transition-all border ${selectedAssist === p.id ? 'bg-blue-600 text-white border-blue-500 shadow-lg shadow-blue-900/20 scale-[1.02]' : 'bg-slate-700/50 text-slate-300 border-transparent hover:bg-slate-700 hover:border-slate-600'}`}>{p.name}</button>))}</div></div>)}
-                        <button onClick={confirmGoal} disabled={!selectedScorer || !selectedAssist || (editingGoalId ? isProcessing : false)} className="w-full mt-2 bg-gradient-to-r from-green-600 to-emerald-600 disabled:from-slate-700 disabled:to-slate-700 disabled:opacity-50 disabled:cursor-not-allowed hover:from-green-500 hover:to-emerald-500 text-white py-3.5 rounded-xl font-bold shadow-lg shadow-green-900/20 transition-all active:scale-[0.98] flex items-center justify-center gap-2">{isProcessing && editingGoalId ? <Loader2 size={20} className="animate-spin" /> : <CheckCircle size={20} />}{editingGoalId ? 'Salvar Alterações' : 'Confirmar Gol'}</button>
+                        <div className="flex gap-2">
+                            {editingGoalId && (
+                                <button 
+                                    onClick={async () => {
+                                        if (isProcessing) return;
+                                        setIsProcessing(true);
+                                        const updated = await matchService.deleteGoal(match.id, game.id, editingGoalId);
+                                        onUpdate(updated);
+                                        setScoringTeamId(null);
+                                        setEditingGoalId(null);
+                                        setIsProcessing(false);
+                                    }} 
+                                    disabled={isProcessing}
+                                    className="px-4 bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white border border-red-500/30 rounded-xl font-bold transition-all flex items-center justify-center gap-1.5"
+                                    title="Excluir Gol"
+                                >
+                                    <Trash2 size={18} />
+                                    Excluir
+                                </button>
+                            )}
+                            <button onClick={confirmGoal} disabled={!selectedScorer || (editingGoalId ? isProcessing : false)} className="flex-1 mt-2 bg-gradient-to-r from-green-600 to-emerald-600 disabled:from-slate-700 disabled:to-slate-700 disabled:opacity-50 disabled:cursor-not-allowed hover:from-green-500 hover:to-emerald-500 text-white py-3.5 rounded-xl font-bold shadow-lg shadow-green-900/20 transition-all active:scale-[0.98] flex items-center justify-center gap-2">{isProcessing && editingGoalId ? <Loader2 size={20} className="animate-spin" /> : <CheckCircle size={20} />}{editingGoalId ? 'Salvar Alterações' : 'Confirmar Gol'}</button>
+                        </div>
                     </div>
                 </div>
             </div>

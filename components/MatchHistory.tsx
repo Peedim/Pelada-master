@@ -1,8 +1,9 @@
 import React, { useEffect, useState } from 'react';
 import { Match, MatchStatus, Player, Game, Goal, GamePhase } from '../types';
 import { matchService } from '../services/matchService';
-import { Trophy, Calendar, AlertCircle, ChevronDown, ChevronUp, Users, Activity, Zap, Medal, Star } from 'lucide-react';
+import { Trophy, Calendar, AlertCircle, ChevronDown, ChevronUp, Users, Activity, Zap, Medal, Star, Edit2 } from 'lucide-react';
 import { formatMatchDate } from '../utils/dateUtils';
+import GameEditModal from './GameEditModal';
 
 interface MatchHistoryProps {
   onSelectMatch: (matchId: string) => void;
@@ -134,7 +135,14 @@ const MatchHistory: React.FC<MatchHistoryProps> = ({ onSelectMatch }) => {
 
                 {/* Expanded Details */}
                 {isExpanded && (
-                   <MatchDetails match={match} getPlayerName={getPlayerName} getTeamName={getTeamName} />
+                   <MatchDetails 
+                      match={match} 
+                      getPlayerName={getPlayerName} 
+                      getTeamName={getTeamName} 
+                      onUpdateMatch={(updated) => {
+                        setHistory(prev => prev.map(m => m.id === updated.id ? updated : m));
+                      }}
+                   />
                 )}
               </div>
             );
@@ -150,8 +158,10 @@ const MatchDetails: React.FC<{
     match: Match; 
     getPlayerName: (m: Match, id: string) => string;
     getTeamName: (m: Match, id: string) => string;
-}> = ({ match, getPlayerName, getTeamName }) => {
+    onUpdateMatch: (updatedMatch: Match) => void;
+}> = ({ match, getPlayerName, getTeamName, onUpdateMatch }) => {
     const [activeTab, setActiveTab] = useState<'squads' | 'matches'>('matches');
+    const [editingGame, setEditingGame] = useState<Game | null>(null);
 
     // Agrupamento por Fase
     const gamesByPhase = match.games
@@ -242,6 +252,13 @@ const MatchDetails: React.FC<{
                                                         <span className={`text-lg font-mono font-bold px-2 rounded ${isFinal ? 'text-yellow-400 bg-yellow-900/20' : 'text-white bg-slate-900'}`}>{game.awayScore}</span>
                                                     </div>
                                                     <div className="flex-1 text-left font-bold text-slate-200 text-sm sm:text-base">{getTeamName(match, game.awayTeamId)}</div>
+                                                    <button
+                                                        onClick={(e) => { e.stopPropagation(); setEditingGame(game); }}
+                                                        className="ml-2 p-1.5 text-slate-400 hover:text-green-400 hover:bg-slate-700 rounded-lg transition-colors"
+                                                        title="Editar Placar e Gols"
+                                                    >
+                                                        <Edit2 size={14} />
+                                                    </button>
                                                 </div>
 
                                                 {/* Goals List */}
@@ -289,6 +306,18 @@ const MatchDetails: React.FC<{
                         </div>
                     )}
                 </div>
+            )}
+
+            {editingGame && (
+                <GameEditModal
+                    match={match}
+                    game={editingGame}
+                    isOpen={!!editingGame}
+                    onClose={() => setEditingGame(null)}
+                    onUpdate={(updated) => {
+                        onUpdateMatch(updated);
+                    }}
+                />
             )}
 
             {/* Content: Squads (Mantido Igual) */}
