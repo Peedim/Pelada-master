@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
+import './index.css';
 import PlayerDashboard from './components/PlayerDashboard';
 import PlayerForm from './components/PlayerForm';
 import TeamSorter from './components/TeamSorter';
@@ -9,209 +10,234 @@ import MatchHistory from './components/MatchHistory';
 import DataExport from './components/DataExport';
 import FooterNav from './components/FooterNav';
 import Home from './components/Home';
-import Login from './components/Login'; // <--- IMPORTANTE
+import Login from './components/Login';
+import Career from './components/Career';
+import Rankings from './components/Rankings'; 
+import MatchCenter from './components/MatchCenter'; // <--- 1. IMPORT NOVO
 import { Player, PlayerFormData, Match, MatchStatus } from './types';
 import { playerService } from './services/playerService';
 import { matchService } from './services/matchService';
-import { supabase } from './services/supabaseClient'; // <--- IMPORTANTE
-import { LayoutDashboard, Shuffle, FolderOpen, History, Bell, LogOut } from 'lucide-react'; // Adicionei LogOut
+import { rankingService } from './services/rankingService'; 
+import { supabase } from './services/supabaseClient';
+import { LayoutDashboard, Shuffle, FolderOpen, History, LogOut } from 'lucide-react';
+import AuthGuard from './components/AuthGuard'; 
+import Achievements from './components/Achievements';
+import NotificationBell from './components/NotificationBell';
+import PlayerOnboarding from './components/PlayerOnboarding';
+import { Toaster } from '@/components/ui/sonner';
 
-// Admin Sub-Views e Main Tab (mantidos iguais)
+
 type AdminView = 'dashboard' | 'create' | 'edit' | 'sorter' | 'drafts' | 'draft-editor' | 'active-match' | 'history';
-type MainTab = 'home' | 'admin';
+
+type MainTab = 'home' | 'career' | 'rankings' | 'achievements' | 'admin';
 
 const App: React.FC = () => {
   const [mainTab, setMainTab] = useState<MainTab>('home');
   const [adminView, setAdminView] = useState<AdminView>('dashboard');
   
+  // --- ESTADO GLOBAL (Otimização) ---
   const [players, setPlayers] = useState<Player[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
+  const [hallOfFame, setHallOfFame] = useState<any[]>([]);
+  const [manualUnlocks, setManualUnlocks] = useState<string[]>([]); 
+  
   const [selectedPlayer, setSelectedPlayer] = useState<Player | undefined>(undefined);
   const [selectedDraftId, setSelectedDraftId] = useState<string | null>(null);
   const [activeMatchId, setActiveMatchId] = useState<string | null>(null);
+  
+  // 2. NOVO ESTADO PARA O VESTIÁRIO
+  const [activeMatchCenterId, setActiveMatchCenterId] = useState<string | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState(false);
-  
   const [previousAdminView, setPreviousAdminView] = useState<AdminView>('drafts');
+  const [session, setSession] = useState<any>(null);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
 
-  // --- NOVA LÓGICA DE AUTH ---
-  const [session, setSession] = useState<any>(null); // Sessão do Supabase
-  const [currentUserId, setCurrentUserId] = useState<string | null>(null); // ID do Player vinculado
-
-  // 1. Monitorar a sessão do Supabase
   useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
       setSession(session);
     });
-
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
     });
-
     return () => subscription.unsubscribe();
   }, []);
 
-  // 2. Carregar dados QUANDO houver sessão
   useEffect(() => {
     if (session) {
-      loadInitialData();
+      const isFirstLoad = players.length === 0;
+      loadInitialData(isFirstLoad);
     } else {
-      setLoading(false); // Para mostrar a tela de login
+      setLoading(false);
     }
   }, [session]);
 
-  const loadInitialData = async () => {
+  // --- CARREGAMENTO INICIAL UNIFICADO ---
+  const loadInitialData = async (forceLoading = true) => {
     try {
-      setLoading(true);
-      
-      const [allPlayers, allMatches] = await Promise.all([
-        playerService.getAll(),
-        matchService.getAll()
-      ]);
-      
-      setPlayers(allPlayers);
-      setMatches(allMatches);
+      // 1. Tenta carregar do localStorage primeiro para carregamento instantâneo (Stale-While-Revalidate)
+      const cachedPlayers = localStorage.getItem('c13_players');
+      const cachedMatches = localStorage.getItem('c13_matches');
+      const cachedHall = localStorage.getItem('c13_hall_of_fame');
 
-      // VINCULAR AUTH -> PLAYER
-      // Pegamos o email do login e procuramos na tabela players
-      if (session?.user?.email) {
-        const userEmail = session.user.email.toLowerCase();
-        const foundPlayer = allPlayers.find(p => p.email.toLowerCase() === userEmail);
-        
-        if (foundPlayer) {
-          setCurrentUserId(foundPlayer.id);
-        } else {
-          // Opcional: Se logou mas não tem player, pode avisar ou criar um rascunho
-          console.warn("Usuário logado, mas nenhum jogador encontrado com este email.");
+      let hasCache = false;
+      if (cachedPlayers && cachedMatches && cachedHall) {
+        try {
+          const parsedPlayers = JSON.parse(cachedPlayers);
+          const parsedMatches = JSON.parse(cachedMatches);
+          const parsedHall = JSON.parse(cachedHall);
+
+          setPlayers(parsedPlayers);
+          setMatches(parsedMatches);
+          setHallOfFame(parsedHall);
+          hasCache = true;
+          // Desativa o spinner imediatamente já que temos dados locais para exibir
+          setLoading(false);
+        } catch (e) {
+          console.error("Erro ao ler cache local:", e);
         }
       }
 
-    } catch (error) {
-      console.error("Failed to load initial data", error);
-    } finally {
-      setLoading(false);
+      const shouldShowSpinner = (forceLoading || players.length === 0) && !hasCache;
+
+      if (shouldShowSpinner) {
+        setLoading(true);
+      }
+
+      // 2. Busca dados atualizados do Supabase
+      const [allPlayers, allMatches, hallData] = await Promise.all([
+        playerService.getAll(),
+        matchService.getAll(),
+        rankingService.getHallOfFame()
+      ]);
+      
+      setPlayers(allPlayers);
+      setMatches(allMatches);
+      setHallOfFame(hallData);
+
+      // 3. Atualiza o cache local
+      localStorage.setItem('c13_players', JSON.stringify(allPlayers));
+      localStorage.setItem('c13_matches', JSON.stringify(allMatches));
+      localStorage.setItem('c13_hall_of_fame', JSON.stringify(hallData));
+
+      if (session?.user?.email) {
+        const userEmail = session.user.email.toLowerCase();
+        const foundPlayer = allPlayers.find(p => p.email.toLowerCase() === userEmail);
+        if (foundPlayer) {
+            setCurrentUserId(foundPlayer.id);
+            const unlocks = await playerService.getManualAchievements(foundPlayer.id);
+            setManualUnlocks(unlocks);
+        }
+      }
+    } catch (error) { 
+      console.error("Failed to load initial data", error); 
+    } finally { 
+      setLoading(false); 
     }
   };
 
+  // --- REFRESH GERAL ---
   const refreshData = async () => {
-    // Mesma lógica de refresh
     try {
-      const [allPlayers, allMatches] = await Promise.all([
-        playerService.getAll(),
-        matchService.getAll()
+      const [allPlayers, allMatches, hallData] = await Promise.all([
+          playerService.getAll(), 
+          matchService.getAll(),
+          rankingService.getHallOfFame()
       ]);
       setPlayers(allPlayers);
       setMatches(allMatches);
+      setHallOfFame(hallData);
+
+      // Atualiza o cache local
+      localStorage.setItem('c13_players', JSON.stringify(allPlayers));
+      localStorage.setItem('c13_matches', JSON.stringify(allMatches));
+      localStorage.setItem('c13_hall_of_fame', JSON.stringify(hallData));
+      
+      if (currentUserId) {
+          const unlocks = await playerService.getManualAchievements(currentUserId);
+          setManualUnlocks(unlocks);
+      }
+    } catch (error) { console.error("Error refreshing data:", error); }
+  };
+
+  // --- OTIMIZAÇÃO: REFRESH RÁPIDO ---
+  const refreshActiveMatchOnly = async (matchId: string) => {
+    try {
+      const updatedMatch = await matchService.getById(matchId);
+      if (updatedMatch) {
+          setMatches(prevMatches => {
+              const newMatches = prevMatches.map(m => m.id === matchId ? updatedMatch : m);
+              // Atualiza o cache de partidas
+              localStorage.setItem('c13_matches', JSON.stringify(newMatches));
+              return newMatches;
+          });
+      }
     } catch (error) {
-      console.error("Error refreshing data:", error);
+        console.error("Erro ao atualizar partida individual:", error);
     }
   };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
+    // Limpa o cache local por segurança
+    localStorage.removeItem('c13_players');
+    localStorage.removeItem('c13_matches');
+    localStorage.removeItem('c13_hall_of_fame');
     setSession(null);
     setCurrentUserId(null);
     setMainTab('home');
+    setActiveMatchCenterId(null); // Reseta o vestiário ao sair
   };
 
-  // --- RENDERIZAÇÃO CONDICIONAL ---
 
-  // Se não estiver logado, mostra Login
-  if (!session) {
-    return <Login onLoginSuccess={() => {}} />;
+  // 3. HANDLER PARA ABRIR O VESTIÁRIO
+  const handleOpenMatchCenter = (matchId: string) => {
+      setActiveMatchCenterId(matchId);
+  };
+
+  if (!session) return <Login onLoginSuccess={() => {}} />;
+  if (loading) return <div className="flex flex-col items-center justify-center h-screen bg-slate-900 space-y-4"><div className="w-10 h-10 border-4 border-green-500 border-t-transparent rounded-full animate-spin"></div><p className="text-slate-400 animate-pulse">Carregando perfil...</p></div>;
+  if (!currentUserId && session) return <div className="flex flex-col items-center justify-center h-screen bg-slate-900 p-6 text-center"><div className="bg-slate-800 p-8 rounded-xl border border-slate-700 max-w-md"><h2 className="text-xl font-bold text-white mb-2">Perfil não encontrado</h2><p className="text-slate-400 mb-6">Você está logado como <span className="text-green-400">{session.user.email}</span>, mas não existe um jogador cadastrado com este e-mail no sistema.</p><div className="flex flex-col gap-3"><button onClick={handleLogout} className="bg-slate-700 hover:bg-slate-600 text-white py-2 px-4 rounded-lg">Sair / Trocar Conta</button><p className="text-xs text-slate-500 mt-2">Peça para o administrador cadastrar este e-mail.</p></div></div></div>;
+
+  // 4. RENDERIZAÇÃO CONDICIONAL DA TELA "VESTIÁRIO" (MODO JOGO)
+  if (activeMatchCenterId) {
+      return (
+          <MatchCenter 
+              matchId={activeMatchCenterId} 
+              onBack={() => setActiveMatchCenterId(null)} 
+          />
+      );
   }
 
-  // Se estiver carregando dados após login
-  if (loading) {
-    return (
-      <div className="flex flex-col items-center justify-center h-screen bg-slate-900 space-y-4">
-        <div className="w-10 h-10 border-4 border-green-500 border-t-transparent rounded-full animate-spin"></div>
-        <p className="text-slate-400 animate-pulse">Carregando perfil...</p>
-      </div>
-    );
-  }
-
-  // Se logou, mas o email não bate com nenhum jogador na tabela
-  if (!currentUserId && session) {
-    return (
-      <div className="flex flex-col items-center justify-center h-screen bg-slate-900 p-6 text-center">
-        <div className="bg-slate-800 p-8 rounded-xl border border-slate-700 max-w-md">
-          <h2 className="text-xl font-bold text-white mb-2">Perfil não encontrado</h2>
-          <p className="text-slate-400 mb-6">
-            Você está logado como <span className="text-green-400">{session.user.email}</span>, 
-            mas não existe um jogador cadastrado com este e-mail no sistema.
-          </p>
-          <div className="flex flex-col gap-3">
-             <button onClick={handleLogout} className="bg-slate-700 hover:bg-slate-600 text-white py-2 px-4 rounded-lg">
-                Sair / Trocar Conta
-             </button>
-             <p className="text-xs text-slate-500 mt-2">Peça para o administrador cadastrar este e-mail.</p>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // --- RESTO DO APP (Se passou por tudo acima) ---
-  
   const currentUser = players.find(p => p.id === currentUserId) || null;
   const isAdmin = currentUser?.is_admin || false;
 
-  // Funções de handler (mantidas iguais, omiti para brevidade, mantenha as suas originais)
   const handleAddPlayerClick = () => { setSelectedPlayer(undefined); setAdminView('create'); };
   const handleEditPlayerClick = (player: Player) => { setSelectedPlayer(player); setAdminView('edit'); };
-  const handleFormSubmit = async (data: PlayerFormData) => {
-    setActionLoading(true);
-    try {
-      if (adminView === 'edit' && selectedPlayer) {
-        await playerService.update(selectedPlayer.id, data);
-      } else {
-        await playerService.create(data);
-      }
-      await refreshData();
-      setAdminView('dashboard');
-    } catch (error) { console.error(error); alert("Erro ao salvar."); } finally { setActionLoading(false); }
-  };
+  const handleFormSubmit = async (data: PlayerFormData) => { setActionLoading(true); try { if (adminView === 'edit' && selectedPlayer) await playerService.update(selectedPlayer.id, data); else await playerService.create(data); await refreshData(); setAdminView('dashboard'); } catch (error) { console.error(error); alert("Erro ao salvar."); } finally { setActionLoading(false); } };
   const handleCancel = () => { setAdminView('dashboard'); setSelectedPlayer(undefined); };
   const handleDraftSaved = () => { refreshData(); setAdminView('drafts'); };
-  const handleSelectMatch = (match: Match) => {
-    if (match.status === MatchStatus.DRAFT) { setSelectedDraftId(match.id); setAdminView('draft-editor'); } 
-    else { setActiveMatchId(match.id); setPreviousAdminView('drafts'); setAdminView('active-match'); }
-  };
+  const handleSelectMatch = (match: Match) => { if (match.status === MatchStatus.DRAFT) { setSelectedDraftId(match.id); setAdminView('draft-editor'); } else { setActiveMatchId(match.id); setPreviousAdminView('drafts'); setAdminView('active-match'); } };
   const handleSelectHistoryMatch = (matchId: string) => { setActiveMatchId(matchId); setPreviousAdminView('history'); setAdminView('active-match'); };
-  const handlePublishMatch = async (matchId: string) => {
-    setActionLoading(true);
-    try { await matchService.publishMatch(matchId); await refreshData(); setActiveMatchId(matchId); setPreviousAdminView('drafts'); setAdminView('active-match'); } 
-    catch (error: any) { alert(error.message); } finally { setActionLoading(false); }
-  };
+  const handlePublishMatch = async (matchId: string) => { setActionLoading(true); try { await matchService.publishMatch(matchId); await refreshData(); setActiveMatchId(matchId); setPreviousAdminView('drafts'); setAdminView('active-match'); } catch (error: any) { alert(error.message); } finally { setActionLoading(false); } };
 
   return (
     <div className="min-h-screen bg-slate-900 text-slate-100 font-sans selection:bg-green-500 selection:text-white">
-      {/* HEADER */}
       <div className="border-b border-slate-800 bg-slate-900/90 sticky top-0 z-40 backdrop-blur-md">
         <div className="max-w-7xl mx-auto px-4 h-16 flex items-center justify-between">
-          {/* Logo / Title */}
-          {mainTab === 'home' ? (
-             <div className="flex items-center gap-4">
-                <div className="grid grid-cols-2 gap-1">
-                   <div className="w-2 h-2 rounded-full bg-white/80"></div>
-                   <div className="w-2 h-2 rounded-full bg-white/80"></div>
-                   <div className="w-2 h-2 rounded-full bg-white/80"></div>
-                   <div className="w-2 h-2 rounded-full bg-white/80"></div>
-                </div>
-             </div>
-          ) : (
-             <div className="flex items-center gap-2 cursor-pointer" onClick={() => setAdminView('dashboard')}>
-                <div className="h-8 w-8 bg-cyan-600 rounded-lg flex items-center justify-center font-bold text-white shadow-lg shadow-cyan-500/30">P</div>
-                <span className="font-bold text-xl tracking-tight text-white hidden sm:block">Pelada Manager</span>
-             </div>
-          )}
-          
-          <div className="absolute left-1/2 transform -translate-x-1/2 font-bold text-white uppercase tracking-wider hidden xs:block">
-             {mainTab === 'home' ? 'PELADA MANAGER' : ''}
+          <div 
+            className="flex items-center gap-3 cursor-pointer hover:opacity-90 transition-opacity" 
+            onClick={() => {
+                if (mainTab !== 'home') setAdminView('dashboard');
+            }}
+            >
+            <img src="/logo2.webp" alt="Logo C13" className="h-10 w-10 object-contain drop-shadow-lg" />
+            <span className="font-bold text-xl tracking-tight text-white hidden sm:block">C13 Manager</span>
           </div>
+          
+          <div className="absolute left-1/2 transform -translate-x-1/2 font-bold text-white uppercase tracking-wider hidden xs:block">{mainTab === 'home' ? 'PELADA MANAGER' : ''}</div>
 
-          {/* Right Actions */}
           <div className="flex items-center gap-2">
             {mainTab === 'admin' && (
               <nav className="flex space-x-1 bg-slate-800/50 p-1 rounded-lg border border-slate-700/50 overflow-x-auto mr-2 custom-scrollbar">
@@ -221,40 +247,74 @@ const App: React.FC = () => {
                 <button onClick={() => setAdminView('history')} className={`p-1.5 rounded-md transition-all ${adminView === 'history' ? 'bg-slate-700 text-white' : 'text-slate-400'}`} title="Histórico"><History size={20} /></button>
               </nav>
             )}
+            
             {mainTab === 'admin' && <DataExport />}
             
-            {/* Logout Button */}
-            <button 
-              onClick={handleLogout}
-              className="p-2 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-full transition-colors"
-              title="Sair"
-            >
-              <LogOut size={20} />
-            </button>
+            {currentUser && (
+                <NotificationBell 
+                  currentUser={currentUser} 
+                  onNavigate={(tab) => setMainTab(tab as MainTab)} 
+                />
+            )}
+            
+            <button onClick={handleLogout} className="p-2 text-slate-400 hover:text-red-400 hover:bg-slate-800 rounded-full transition-colors" title="Sair"><LogOut size={20} /></button>
           </div>
         </div>
       </div>
 
-      {/* MAIN CONTENT */}
       <main className="max-w-7xl mx-auto py-4">
-        {mainTab === 'home' && currentUser && (
-          <Home player={currentUser} matches={matches} />
-        )}
-        
-        {mainTab === 'admin' && (
-          <div className="px-4 sm:px-6 lg:px-8 pb-20">
-            {adminView === 'dashboard' && <PlayerDashboard players={players} onAddPlayer={handleAddPlayerClick} onEditPlayer={handleEditPlayerClick} />}
-            {(adminView === 'create' || adminView === 'edit') && <PlayerForm initialData={selectedPlayer} onSubmit={handleFormSubmit} onCancel={handleCancel} isLoading={actionLoading} />}
-            {adminView === 'sorter' && <TeamSorter players={players} onDraftSaved={handleDraftSaved} />}
-            {adminView === 'drafts' && <DraftList onSelectMatch={handleSelectMatch} />}
-            {adminView === 'draft-editor' && selectedDraftId && <DraftEditor matchId={selectedDraftId} onBack={() => setAdminView('drafts')} onPublish={handlePublishMatch} isLoading={actionLoading} />}
-            {adminView === 'active-match' && activeMatchId && <ActiveMatchDashboard matchId={activeMatchId} onBack={() => setAdminView(previousAdminView)} onMatchUpdate={refreshData} />}
-            {adminView === 'history' && <MatchHistory onSelectMatch={handleSelectHistoryMatch} />}
-          </div>
+        {currentUser && (!currentUser.position || !currentUser.playStyle) ? (
+            <PlayerOnboarding 
+                player={currentUser} 
+                onComplete={refreshData} 
+            />
+        ) : (
+          
+            <>
+                {/* 5. PASSANDO A FUNÇÃO PARA O COMPONENTE HOME */}
+                {mainTab === 'home' && currentUser && (
+                    <Home 
+                        player={currentUser} 
+                        matches={matches} 
+                        onNavigateToMatch={handleOpenMatchCenter} 
+                    />
+                )}
+                
+                {mainTab === 'career' && currentUser && (
+                    <Career currentUser={currentUser} matches={matches} />
+                )}
+                
+                {mainTab === 'rankings' && (
+                    <Rankings players={players} matches={matches} hallOfFame={hallOfFame} />
+                )}
+                
+                {mainTab === 'achievements' && currentUser && (
+                  <Achievements player={currentUser} matches={matches} hallOfFame={hallOfFame} manualUnlocks={manualUnlocks} />
+                )}
+                
+                {mainTab === 'home' && !currentUser && <div className="flex flex-col items-center justify-center pt-20 text-slate-500"><p>Usuário não identificado.</p></div>}
+                
+                {mainTab === 'admin' && (
+                  <AuthGuard isAdminRoute={true} currentUserAdmin={isAdmin}>
+                    <div className="px-4 sm:px-6 lg:px-8 pb-20">
+                      {adminView === 'dashboard' && <PlayerDashboard players={players} onAddPlayer={handleAddPlayerClick} onEditPlayer={handleEditPlayerClick} />}
+                      {(adminView === 'create' || adminView === 'edit') && <PlayerForm initialData={selectedPlayer} onSubmit={handleFormSubmit} onCancel={handleCancel} isLoading={actionLoading} />}
+                      {adminView === 'sorter' && <TeamSorter players={players} onDraftSaved={handleDraftSaved} />}
+                      {adminView === 'drafts' && <DraftList onSelectMatch={handleSelectMatch} />}
+                      {adminView === 'draft-editor' && selectedDraftId && <DraftEditor matchId={selectedDraftId} onBack={() => setAdminView('drafts')} onPublish={handlePublishMatch} isLoading={actionLoading} />}
+                      
+                      {adminView === 'active-match' && activeMatchId && <ActiveMatchDashboard matchId={activeMatchId} onBack={() => setAdminView(previousAdminView)} onMatchUpdate={() => refreshActiveMatchOnly(activeMatchId)} />}
+                      
+                      {adminView === 'history' && <MatchHistory onSelectMatch={handleSelectHistoryMatch} />}
+                    </div>
+                  </AuthGuard>
+                )}
+            </>
         )}
       </main>
       
       <FooterNav currentTab={mainTab} onTabChange={(tab) => setMainTab(tab as MainTab)} isAdmin={isAdmin} />
+      <Toaster position="top-right" theme="dark" />
     </div>
   );
 };

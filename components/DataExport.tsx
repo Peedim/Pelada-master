@@ -29,9 +29,7 @@ const DataExport: React.FC = () => {
         Ritmo: p.attributes.pace,
         Chute: p.attributes.shooting,
         Passe: p.attributes.passing,
-        Drible: p.attributes.dribbling,
         Defesa: p.attributes.defending,
-        Fisico: p.attributes.physical
       }));
 
       // 3. Prepare Worksheet: Eventos (Matches)

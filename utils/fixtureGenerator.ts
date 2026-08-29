@@ -1,4 +1,3 @@
-
 import { Team, Game, GameStatus, GamePhase } from '../types';
 
 export const generateFixtures = (matchId: string, teams: Team[], type: 'Quadrangular' | 'Triangular'): Game[] => {
@@ -18,16 +17,18 @@ export const generateFixtures = (matchId: string, teams: Team[], type: 'Quadrang
   });
 
   if (type === 'Triangular') {
-    // A vs B, B vs C, C vs A (x2)
+    // A vs B, B vs C, C vs A (x3 turnos = 9 partidas)
+    // Cada time joga 6 vezes no total.
     // Teams indices: 0, 1, 2
     if (teams.length < 3) return [];
 
     const rounds = [
-        [0, 1], [1, 2], [2, 0], // Leg 1
-        [0, 1], [1, 2], [2, 0]  // Leg 2
+        [0, 1], [1, 2], [2, 0], // Turno 1
+        [0, 1], [1, 2], [2, 0], // Turno 2
+        [0, 1], [1, 2], [2, 0]  // Turno 3
     ];
     rounds.forEach(([h, a]) => {
-        games.push(createGame(teams[h].id, teams[a].id, GamePhase.PHASE_1)); // Reusing PHASE_1 for triangular basic
+        games.push(createGame(teams[h].id, teams[a].id, GamePhase.PHASE_1));
     });
   } else {
     // Quadrangular - New 4 Phase Structure
