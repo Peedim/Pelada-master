@@ -51,6 +51,45 @@ const calculateStatsFromMatches = (matches: any[], players: Player[]): RankingsD
     return stats;
 };
 
+// --- HELPER: Encontrar Campeão com Desempate e Filtros ---
+export const findChampion = (
+  data: RankingsData,
+  players: Player[],
+  category: "wins" | "goals" | "assists" | "cleanSheets"
+) => {
+  const list = Object.values(data).map((stat) => {
+    const player = players.find((p) => p.id === stat.playerId);
+    return {
+      ...stat,
+      position: player?.position || "",
+      contributions: stat.goals + stat.assists,
+    };
+  });
+
+  const filtered = list.filter((item) => {
+    if (item[category] === 0) return false;
+
+    if (category === "cleanSheets") {
+      return ["Defensor", "Goleiro", "Zagueiro"].includes(item.position);
+    }
+    return true;
+  });
+
+  filtered.sort((a, b) => {
+    const diff = b[category] - a[category];
+    if (diff !== 0) return diff;
+
+    if (category === "wins") return b.contributions - a.contributions;
+    if (category === "goals") return b.wins - a.wins;
+    if (category === "assists") return b.wins - a.wins;
+    if (category === "cleanSheets") return b.wins - a.wins;
+
+    return 0;
+  });
+
+  return filtered.length > 0 ? filtered[0] : null;
+};
+
 export const rankingService = {
   // 1. Ranking MENSAL (Agora aceita targetDate)
   getMonthRankings: (players: Player[], allMatches: any[], targetDate: Date = new Date()): RankingsData => {
@@ -98,5 +137,85 @@ export const rankingService = {
       
       const { error } = await supabase.from('monthly_champions').insert(records);
       if (error) throw error;
+  },
+
+  // 5. Atualização AUTOMÁTICA dos Rankings (Executada em todo dia 1 do mês)
+  // Consolida o Hall da Fama do mês anterior e zera os deltas para o novo mês SEM alterar o OVR dos jogadores.
+  autoConsolidateMonthlyRankings: async (players: Player[], allMatches: any[]): Promise<boolean> => {
+    try {
+      const now = new Date();
+      // O fechamento se aplica ao mês anterior assim que um novo mês inicia (dia 1 em diante)
+      const prevMonthDate = new Date(now.getFullYear(), now.getMonth() - 1, 15);
+      const prevMonthKey = prevMonthDate
+        .toLocaleString("pt-BR", { month: "short" })
+        .toUpperCase()
+        .replace(".", "");
+
+      // 1. Verifica se os campeões do mês anterior já estão salvos no Hall da Fama
+      const { data: existing, error: checkError } = await supabase
+        .from('monthly_champions')
+        .select('id')
+        .eq('month_key', prevMonthKey);
+
+      if (checkError) {
+        console.error("Erro ao verificar Hall da Fama:", checkError);
+        return false;
+      }
+
+      if (existing && existing.length > 0) {
+        // Mês anterior já foi consolidado
+        return false;
+      }
+
+      // 2. Filtra partidas finalizadas do mês anterior
+      const prevMonth = prevMonthDate.getMonth();
+      const prevYear = prevMonthDate.getFullYear();
+      const prevMonthMatches = allMatches.filter(m => {
+        const d = new Date(m.date);
+        return m.status === MatchStatus.FINISHED && d.getMonth() === prevMonth && d.getFullYear() === prevYear;
+      });
+
+      if (prevMonthMatches.length === 0) {
+        return false;
+      }
+
+      // 3. Calcula os rankings do mês anterior
+      const monthlyStats = rankingService.getMonthRankings(players, allMatches, prevMonthDate);
+
+      // 4. Determina os 4 Campeões do mês encerrado
+      const mvp = findChampion(monthlyStats, players, "wins");
+      const artilheiro = findChampion(monthlyStats, players, "goals");
+      const garcom = findChampion(monthlyStats, players, "assists");
+      const muralha = findChampion(monthlyStats, players, "cleanSheets");
+
+      const championsToSave: { category: string; playerId: string; value: number }[] = [];
+      if (mvp) championsToSave.push({ category: "wins", playerId: mvp.playerId, value: mvp.wins });
+      if (artilheiro) championsToSave.push({ category: "goals", playerId: artilheiro.playerId, value: artilheiro.goals });
+      if (garcom) championsToSave.push({ category: "assists", playerId: garcom.playerId, value: garcom.assists });
+      if (muralha) championsToSave.push({ category: "clean_sheets", playerId: muralha.playerId, value: muralha.cleanSheets });
+
+      if (championsToSave.length > 0) {
+        await rankingService.saveChampions(prevMonthKey, championsToSave);
+        console.log(`[Rankings Automáticos] Hall da Fama de ${prevMonthKey} consolidado automaticamente no dia 1!`);
+      }
+
+      // 5. Zera os deltas mensais residuais para o novo ciclo (SEM alterar o OVR dos jogadores)
+      const { error: resetError } = await supabase
+        .from("players")
+        .update({ monthly_delta: 0, pace_acc: 0, shooting_acc: 0, passing_acc: 0, defending_acc: 0 })
+        .not("id", "is", null);
+
+      if (resetError) {
+        console.warn("Aviso ao zerar deltas residuais:", resetError);
+      }
+
+      // 6. Invalida cache local do Hall da Fama para refletir imediatamente
+      localStorage.removeItem('c13_hall_of_fame');
+
+      return true;
+    } catch (err) {
+      console.error("Erro na consolidação automática dos rankings mensais:", err);
+      return false;
+    }
   }
 };

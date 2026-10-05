@@ -111,15 +111,26 @@ const App: React.FC = () => {
         matchService.getAll(),
         rankingService.getHallOfFame()
       ]);
+
+      // Atualização automática dos rankings (Todo dia 1 do mês consolida o mês anterior no Hall da Fama)
+      let finalHallData = hallData;
+      try {
+        const didConsolidate = await rankingService.autoConsolidateMonthlyRankings(allPlayers, allMatches);
+        if (didConsolidate) {
+          finalHallData = await rankingService.getHallOfFame();
+        }
+      } catch (autoErr) {
+        console.error("Erro na checagem automática dos rankings:", autoErr);
+      }
       
       setPlayers(allPlayers);
       setMatches(allMatches);
-      setHallOfFame(hallData);
+      setHallOfFame(finalHallData);
 
       // 3. Atualiza o cache local
       localStorage.setItem('c13_players', JSON.stringify(allPlayers));
       localStorage.setItem('c13_matches', JSON.stringify(allMatches));
-      localStorage.setItem('c13_hall_of_fame', JSON.stringify(hallData));
+      localStorage.setItem('c13_hall_of_fame', JSON.stringify(finalHallData));
 
       if (session?.user?.email) {
         const userEmail = session.user.email.toLowerCase();
@@ -145,14 +156,25 @@ const App: React.FC = () => {
           matchService.getAll(),
           rankingService.getHallOfFame()
       ]);
+
+      let finalHallData = hallData;
+      try {
+        const didConsolidate = await rankingService.autoConsolidateMonthlyRankings(allPlayers, allMatches);
+        if (didConsolidate) {
+          finalHallData = await rankingService.getHallOfFame();
+        }
+      } catch (autoErr) {
+        console.error("Erro na checagem automática dos rankings:", autoErr);
+      }
+
       setPlayers(allPlayers);
       setMatches(allMatches);
-      setHallOfFame(hallData);
+      setHallOfFame(finalHallData);
 
       // Atualiza o cache local
       localStorage.setItem('c13_players', JSON.stringify(allPlayers));
       localStorage.setItem('c13_matches', JSON.stringify(allMatches));
-      localStorage.setItem('c13_hall_of_fame', JSON.stringify(hallData));
+      localStorage.setItem('c13_hall_of_fame', JSON.stringify(finalHallData));
       
       if (currentUserId) {
           const unlocks = await playerService.getManualAchievements(currentUserId);
@@ -297,7 +319,7 @@ const App: React.FC = () => {
                 {mainTab === 'admin' && (
                   <AuthGuard isAdminRoute={true} currentUserAdmin={isAdmin}>
                     <div className="px-4 sm:px-6 lg:px-8 pb-20">
-                      {adminView === 'dashboard' && <PlayerDashboard players={players} onAddPlayer={handleAddPlayerClick} onEditPlayer={handleEditPlayerClick} />}
+                      {adminView === 'dashboard' && <PlayerDashboard players={players} onAddPlayer={handleAddPlayerClick} onEditPlayer={handleEditPlayerClick} onRefreshData={refreshData} />}
                       {(adminView === 'create' || adminView === 'edit') && <PlayerForm initialData={selectedPlayer} onSubmit={handleFormSubmit} onCancel={handleCancel} isLoading={actionLoading} />}
                       {adminView === 'sorter' && <TeamSorter players={players} onDraftSaved={handleDraftSaved} />}
                       {adminView === 'drafts' && <DraftList onSelectMatch={handleSelectMatch} />}

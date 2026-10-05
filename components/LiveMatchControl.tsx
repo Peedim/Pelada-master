@@ -490,9 +490,9 @@ const LiveMatchControl: React.FC<LiveMatchControlProps> = ({ match, game, onUpda
             </div>
         )}
 
-        <div className="pt-5 border-t border-slate-700/50 flex justify-center">
-            <div className="flex items-center gap-6">
-                <span className="flex items-center gap-2 text-red-500 font-bold animate-pulse text-xs uppercase tracking-widest"><div className="w-2 h-2 bg-red-500 rounded-full shadow-[0_0_10px_red]"></div> Em Andamento</span>
+        <div className="pt-6 border-t border-slate-700/50 flex flex-col sm:flex-row items-center justify-between gap-4 relative z-20">
+            <span className="flex items-center gap-2 text-red-500 font-bold animate-pulse text-xs uppercase tracking-widest"><div className="w-2 h-2 bg-red-500 rounded-full shadow-[0_0_10px_red]"></div> Em Andamento</span>
+            <div className="flex items-center gap-6 w-full sm:w-auto justify-between sm:justify-end">
                 <button 
                     onClick={async () => {
                         if (confirm("Deseja cancelar o início desta partida? O status voltará para 'Aguardando' e o placar/gols registrados serão zerados.")) {
@@ -504,13 +504,20 @@ const LiveMatchControl: React.FC<LiveMatchControlProps> = ({ match, game, onUpda
                             setIsProcessing(false);
                         }
                     }} 
-                    className="text-xs bg-red-900/30 hover:bg-red-600 text-red-300 hover:text-white px-3 py-1.5 rounded-lg border border-red-500/30 transition-all font-semibold shadow flex items-center gap-1.5"
+                    className="text-sm text-red-500 hover:text-red-400 transition-colors font-semibold flex items-center gap-1.5 py-3 px-2 active:scale-95"
                     title="Cancelar Início da Partida (Voltar para Aguardando)"
                 >
-                    <RotateCcw size={13} />
-                    Cancelar Início (Voltar p/ Fila)
+                    <RotateCcw size={14} />
+                    Cancelar
                 </button>
-                {(!requiresPenalties || isPenaltyWinnerDecided) && (<button onClick={handleEndGameClick} className="text-xs text-slate-400 hover:text-white bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-lg transition-all font-bold shadow">Encerrar Partida</button>)}
+                {(!requiresPenalties || isPenaltyWinnerDecided) && (
+                    <button 
+                        onClick={handleEndGameClick} 
+                        className="bg-green-600 hover:bg-green-500 text-white px-6 py-3 rounded-xl font-bold shadow-lg shadow-green-900/30 transition-all active:scale-95 border border-green-500/30 min-h-[48px] min-w-[160px]"
+                    >
+                        Encerrar Partida
+                    </button>
+                )}
             </div>
         </div>
 

@@ -2,16 +2,19 @@ import React, { useMemo, useState } from 'react';
 import { Player, PlayerPosition } from '../types';
 import { playerService, PlayerUpdateSimulation } from '../services/playerService';
 import MonthlyEvolutionPreview from './MonthlyEvolutionPreview';
-import { Search, UserPlus, Users, Shield, List, Zap, CalendarClock } from 'lucide-react';
+import ManualOvrModal from './ManualOvrModal';
+import { Search, UserPlus, Users, Shield, List, Zap, SlidersHorizontal } from 'lucide-react';
 
 interface PlayerDashboardProps {
   players: Player[];
   onAddPlayer: () => void;
   onEditPlayer: (player: Player) => void;
+  onRefreshData?: () => void;
 }
 
-const PlayerDashboard: React.FC<PlayerDashboardProps> = ({ players, onAddPlayer, onEditPlayer }) => {
+const PlayerDashboard: React.FC<PlayerDashboardProps> = ({ players, onAddPlayer, onEditPlayer, onRefreshData }) => {
   const [searchTerm, setSearchTerm] = useState('');
+  const [isManualOvrOpen, setIsManualOvrOpen] = useState(false);
   const [isProcessingMonth, setIsProcessingMonth] = useState(false);
   const [simulationData, setSimulationData] = useState<PlayerUpdateSimulation[] | null>(null);
   const [isSimulating, setIsSimulating] = useState(false);
@@ -58,7 +61,8 @@ const PlayerDashboard: React.FC<PlayerDashboardProps> = ({ players, onAddPlayer,
       try {
           await playerService.commitMonthlyUpdate(simulationData);
           setSimulationData(null); 
-          window.location.reload(); 
+          if (onRefreshData) onRefreshData();
+          else window.location.reload(); 
       } catch (error) {
           console.error(error);
           alert("Erro ao aplicar atualização.");
@@ -81,16 +85,16 @@ const PlayerDashboard: React.FC<PlayerDashboardProps> = ({ players, onAddPlayer,
         </div>
         <div className="flex gap-2">
             <button 
-                onClick={handleMonthlyUpdateClick}
-                disabled={isSimulating || isProcessingMonth}
-                className="bg-slate-800 hover:bg-slate-700 text-white p-3 rounded-lg shadow-lg border border-slate-700 transition-all active:scale-95 disabled:opacity-50"
-                title="Virada de Mês (Atualizar OVR)"
+                onClick={() => setIsManualOvrOpen(true)}
+                className="bg-slate-800 hover:bg-slate-700 text-white p-3 rounded-lg shadow-lg border border-slate-700 transition-all active:scale-95"
+                title="Atualização Manual de OVR"
             >
-                <CalendarClock size={24} className={isSimulating ? 'animate-spin text-blue-400' : 'text-yellow-500'} />
+                <SlidersHorizontal size={24} className="text-yellow-400" />
             </button>
             <button 
             onClick={onAddPlayer}
             className="bg-cyan-600 hover:bg-cyan-500 text-white p-3 rounded-lg shadow-lg shadow-cyan-900/20 transition-all active:scale-95"
+            title="Convidar Novo Jogador"
             >
             <UserPlus size={24} />
             </button>
@@ -201,6 +205,13 @@ const PlayerDashboard: React.FC<PlayerDashboardProps> = ({ players, onAddPlayer,
           isSaving={isProcessingMonth}
         />
       )}
+
+      <ManualOvrModal
+        players={players}
+        isOpen={isManualOvrOpen}
+        onClose={() => setIsManualOvrOpen(false)}
+        onSuccess={() => onRefreshData?.()}
+      />
 
     </div>
   );
